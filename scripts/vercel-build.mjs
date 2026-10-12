@@ -1,10 +1,21 @@
 // Vercel build step (runs on Linux). Order: prisma generate -> migrate -> seed -> next build.
-// If DATABASE_URL/DIRECT_URL are not configured yet (deploy-before-DB), migrate/seed are
-// skipped so the deployment still succeeds; a later deploy with env vars set automatically
-// picks up the full path (generate Postgres client + migrate deploy + seed).
+// If DATABASE_URL is not configured yet (deploy-before-DB), migrate/seed are skipped so the
+// deployment still succeeds; a later deploy with env vars set automatically picks up the
+// full path (generate Postgres client + migrate deploy + seed).
 import { spawnSync } from "node:child_process";
 
-const hasDb = Boolean(process.env.DATABASE_URL && process.env.DIRECT_URL);
+// DATABASE_URL alone is enough — Neon's Vercel integration sets it (plus UNPOOLED variants)
+// but not DIRECT_URL. directUrl (used by `prisma migrate deploy`) must be a DIRECT
+// (non-pooled) connection, so synthesize it from the unpooled string when absent.
+const hasDb = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+
+if (hasDb && !process.env.DIRECT_URL) {
+  process.env.DIRECT_URL =
+    process.env.DATABASE_URL_UNPOOLED ??
+    process.env.POSTGRES_URL_NON_POOLING ??
+    process.env.DATABASE_URL;
+  console.log("DIRECT_URL not set — derived from unpooled connection string for migrations.");
+}
 
 function run(cmd, args) {
   console.log(`$ ${cmd} ${args.join(" ")}`);
