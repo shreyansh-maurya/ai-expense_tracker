@@ -8,6 +8,7 @@ import {
   type PaymentMethod,
 } from "@/lib/csv/core";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validators/expense";
+import { suggestCategoriesBatch } from "./ai-categorize";
 import type { Prisma } from "@prisma/client";
 import { ServiceError } from "./errors";
 
@@ -99,8 +100,7 @@ export async function importExpenseRows(
       !date ||
       !Number.isInteger(r.amountPaise) ||
       r.amountPaise <= 0 ||
-      typeof r.categoryName !== "string" ||
-      r.categoryName.trim() === ""
+      typeof r.categoryName !== "string"
     ) {
       skippedInvalid++;
       continue;
@@ -118,6 +118,33 @@ export async function importExpenseRows(
     return { created: 0, skippedInvalid, skippedDuplicates: 0, categoriesCreated: 0 };
   }
 
+  // ── Auto-categorization (Phase B) ────────────────────────────────────────
+  // Rows shipped without a category get keyword-rule suggestions first,
+  // then AI (when configured) for whatever rules could not place.
+  const existingForSuggest = await prisma.category.findMany({
+    select: { id: true, name: true, keywords: true, isArchived: true },
+  });
+  const uncategorizedIndexes: number[] = [];
+  valid.forEach((r, i) => {
+    if (r.categoryName.trim() === "") uncategorizedIndexes.push(i);
+  });
+  const suggestResults =
+    uncategorizedIndexes.length > 0
+      ? await suggestCategoriesBatch(
+          uncategorizedIndexes.map((i) => ({ merchant: valid[i].merchant, notes: valid[i].notes })),
+          existingForSuggest
+        )
+      : [];
+  // Per-row categorization provenance: USER unless we suggested it.
+  const categorizedBy: string[] = valid.map(() => "USER");
+  suggestResults.forEach((s, j) => {
+    if (s) {
+      const i = uncategorizedIndexes[j];
+      valid[i].categoryName = s.categoryName;
+      categorizedBy[i] = s.source; // "RULE" | "AI"
+    }
+  });
+
   // Resolve categories (create missing ones when allowed).
   const existing = await prisma.category.findMany();
   const byLower = new Map(existing.map((c) => [c.name.toLowerCase(), c]));
@@ -131,9 +158,10 @@ export async function importExpenseRows(
   }
   const missing = [...rawNameByLower.keys()].filter((n) => !byLower.has(n));
 
+  const otherFirst = byLower.get("other");
   if (missing.length > 0 && !opts.createMissingCategories) {
     const fallback =
-      byLower.get("other") ??
+      otherFirst ??
       (await prisma.category.create({
         data: { name: "Other", color: "#64748b" },
       }));
@@ -160,6 +188,7 @@ export async function importExpenseRows(
   let skippedDuplicates = 0;
   const batchSeen = new Set<string>();
   const toCreate: Array<Prisma.ExpenseCreateInput> = [];
+  let vi = 0; // index into valid[] for categorizedBy lookup
 
   const merchantNorms = [
     ...new Set(valid.map((r) => (r.merchant ?? "").toLowerCase()).filter(Boolean)),
@@ -195,9 +224,10 @@ export async function importExpenseRows(
       merchant,
       merchantNorm: merchant ? merchant.toLowerCase() : null,
       notes: r.notes || null,
-      categorizedBy: "USER",
+      categorizedBy: categorizedBy[vi] ?? "USER",
       category: { connect: { id: byLower.get(r.categoryName.toLowerCase())!.id } },
     });
+    vi++;
   }
 
   let created = 0;
