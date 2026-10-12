@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE: Portability-first schema. Prisma enums and Json columns are not
+// supported on SQLite, so paymentMethod / categorizedBy are String fields
+// validated with Zod unions in the app layer. This keeps the switch to
+// PostgreSQL (deployment) a datasource change only.
+
+model Category {
+  id         String    @id @default(cuid())
+  name       String    @unique
+  color      String // hex, e.g. "#f97316"
+  icon       String? // lucide icon name (for future use)
+  keywords   String? // comma-separated, powers deterministic categorization
+  isDefault  Boolean   @default(false)
+  isArchived Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  expenses Expense[]
+  budgets  Budget[]
+}
+
+model Expense {
+  id            String   @id @default(cuid())
+  amountPaise   Int // integer paise, never floats
+  date          DateTime // UTC midnight of the calendar date
+  categoryId    String
+  paymentMethod String // CASH | CARD | UPI | NET_BANKING | WALLET | OTHER
+  merchant      String?
+  merchantNorm  String? // lowercase merchant for search + rule matching
+  notes         String?
+  categorizedBy String   @default("USER") // USER | RULE | AI
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([date])
+  @@index([merchantNorm])
+  @@index([categoryId, date])
+}
+
+model Budget {
+  id         String   @id @default(cuid())
+  categoryId String? // null = overall monthly budget
+  month      String // "YYYY-MM"
+  limitPaise Int // integer paise
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, month])
+  @@index([month])
+}

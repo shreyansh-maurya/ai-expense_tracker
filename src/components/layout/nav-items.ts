@@ -1,0 +1,18 @@
+import {
+  FileSpreadsheet,
+  LayoutDashboard,
+  PiggyBank,
+  ReceiptText,
+  Tags,
+  type LucideIcon,
+} from "lucide-react";
+
+export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean };
+
+export const NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/expenses", label: "Expenses", icon: ReceiptText, exact: true },
+  { href: "/budgets", label: "Budgets", icon: PiggyBank },
+  { href: "/settings/categories", label: "Categories", icon: Tags },
+  { href: "/expenses/import", label: "Import CSV", icon: FileSpreadsheet },
+];
