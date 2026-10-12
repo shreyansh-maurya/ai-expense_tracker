@@ -13,7 +13,7 @@ export function parseAmountToPaise(input: string | number): number | null {
   const rupees = intPart === "" ? 0 : parseInt(intPart, 10);
   const paise = fracPart === "" ? 0 : parseInt(fracPart.padEnd(2, "0"), 10);
   const total = rupees * 100 + paise;
-  if (total > 9_999_999_999) return null; // sanity cap (~₹10 crore)
+  if (total > 2_000_000_000) return null; // sanity cap: ₹2 crore — keeps Int in Postgres int4 range
   return total;
 }
 

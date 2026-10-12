@@ -18,9 +18,15 @@ prisma/dev.db-journal
 .env
 .env*.local
 
+# vercel
+.vercel/
+
 # misc
 .DS_Store
 *.pem
 npm-debug.log*
 coverage/
 *.tsbuildinfo
+
+.vercel
+.env*

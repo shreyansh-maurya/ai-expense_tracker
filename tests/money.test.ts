@@ -23,6 +23,12 @@ describe("parseAmountToPaise", () => {
     expect(parseAmountToPaise("abc")).toBeNull();
     expect(parseAmountToPaise("")).toBeNull();
     expect(parseAmountToPaise("1.2.3")).toBeNull();
+    expect(parseAmountToPaise("20000001")).toBeNull(); // ₹2,00,00,001 — above int4 paise cap
+  });
+
+  it("accepts amounts up to the ₹2 crore int4-safe cap", () => {
+    expect(parseAmountToPaise("20000000")).toBe(2_000_000_000);
+    expect(parseAmountToPaise("19999999.99")).toBe(1_999_999_999);
   });
 });
 

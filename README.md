@@ -64,6 +64,17 @@ src/lib/           money, dates, csv, validators, services, actions
 tests/             vitest unit tests
 ```
 
+## Deploy: Vercel + Neon (production)
+
+The app ships with two Prisma schemas: `prisma/schema.prisma` (SQLite, local dev) and `prisma/postgres/schema.prisma` (Postgres, production — pooled `DATABASE_URL` + `DIRECT_URL` for migrations). The `vercel-build` script generates the Postgres client, runs `prisma migrate deploy`, seeds the 14 default categories, then builds.
+
+1. **Create a Neon database** at [neon.com](https://neon.com) (free tier) → copy both connection strings (pooled → `DATABASE_URL`, direct → `DIRECT_URL`)
+2. **Create a Vercel project** at [vercel.com/new](https://vercel.com/new) importing `shreyansh-maurya/ai-expense_tracker`
+3. **Add env vars** in Vercel → Settings → Environment Variables: `DATABASE_URL`, `DIRECT_URL` (include `sslmode=require`)
+4. **Deploy** — the build runs migrations + seed automatically; every push to `main` redeploys
+
+Or from the CLI: `npx vercel` (login) → `npx vercel env add DATABASE_URL` / `DIRECT_URL` → `npx vercel --prod`.
+
 ## Roadmap
 
 - **M7+ (Phase B, optional):** provider-agnostic AI auto-categorization (`AI_PROVIDER` / `AI_MODEL` / `AI_BASE_URL` / `AI_API_KEY` env vars) with a deterministic keyword-rule fallback — no key required to run the app.
