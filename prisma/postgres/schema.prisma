@@ -24,8 +24,9 @@ model Category {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  expenses Expense[]
-  budgets  Budget[]
+  expenses          Expense[]
+  budgets           Budget[]
+  recurringExpenses RecurringExpense[]
 }
 
 model Expense {
@@ -38,14 +39,39 @@ model Expense {
   merchantNorm  String? // lowercase merchant for search + rule matching
   notes         String?
   categorizedBy String   @default("USER") // USER | RULE | AI
+  recurringId   String? // set when materialized from a RecurringExpense template
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category         Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  recurringExpense RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
 
   @@index([date])
   @@index([merchantNorm])
   @@index([categoryId, date])
+  @@unique([recurringId, date]) // one materialized row per occurrence — makes runs idempotent
+}
+
+model RecurringExpense {
+  id            String    @id @default(cuid())
+  amountPaise   Int // integer paise, never floats
+  categoryId    String
+  paymentMethod String // CASH | CARD | UPI | NET_BANKING | WALLET | OTHER
+  merchant      String?
+  notes         String?
+  frequency     String // WEEKLY | MONTHLY | YEARLY
+  interval      Int       @default(1) // repeat every N periods
+  startDate     DateTime // UTC midnight — first occurrence, anchors the schedule
+  endDate       DateTime? // UTC midnight — last possible occurrence (inclusive), null = forever
+  nextDate      DateTime // UTC midnight — next occurrence to materialize
+  isActive      Boolean   @default(true) // false = paused or ended
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  category Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  expenses Expense[] // occurrences materialized so far
+
+  @@index([isActive, nextDate])
 }
 
 model Budget {

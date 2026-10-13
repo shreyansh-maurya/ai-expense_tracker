@@ -15,13 +15,13 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   OTHER: "Other",
 };
 
-const amountString = z
+export const amountString = z
   .string()
   .min(1, "Amount is required")
   .refine((v) => parseAmountToPaise(v) !== null, "Enter a valid amount, e.g. 1,250.50")
   .refine((v) => (parseAmountToPaise(v) ?? 0) > 0, "Amount must be greater than zero");
 
-const isoDate = z
+export const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date")
   .refine((v) => parseUTCMidnight(v) !== null, "Choose a valid date");

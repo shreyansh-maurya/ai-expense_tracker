@@ -2,11 +2,13 @@
 
 A modern, local-first personal expense tracker built for India — INR-native, budget-aware, with charts and CSV import/export. Single-user by design (no auth yet), runs entirely on your machine with SQLite.
 
-> **Status:** Phase A (M1–M6) — core tracking, dashboard, budgets, CSV. AI-assisted categorization (Phase B) is optional and comes next.
+> **Status:** Phase A (M1–M6) — core tracking, dashboard, budgets, CSV. Phase B (AI auto-categorization, key optional) and Phase C (recurring expenses) are shipped. Auth / multi-user is next.
 
 ## Features
 
 - **💸 Expense tracking** — add/edit/delete expenses with category, payment method (Cash / Card / UPI / Net Banking / Wallet / Other), merchant and notes
+- **🔁 Recurring expenses** — weekly/monthly/yearly templates (any interval, optional end date) whose due occurrences are created automatically whenever you open the app — no cron or scheduler. Pause, resume and skip without losing history
+- **✨ Auto-categorization** — deterministic keyword rules always; an OpenAI-compatible AI fills the gaps when `AI_API_KEY` is set (CSV import and a ✨ Suggest button in the form)
 - **📊 Dashboard** — monthly total, MoM change, avg/day, top category, 12-month trend chart, category donut, recent expenses
 - **🐷 Budgets** — overall + per-category monthly limits with 80% / 100% warning states
 - **🏷️ Categories** — full CRUD, colors, archive (delete is guarded when expenses exist), keywords for future auto-categorization
@@ -77,5 +79,6 @@ Or from the CLI: `npx vercel` (login) → `npx vercel env add DATABASE_URL` / `D
 
 ## Roadmap
 
-- **M7+ (Phase B, optional):** provider-agnostic AI auto-categorization (`AI_PROVIDER` / `AI_MODEL` / `AI_BASE_URL` / `AI_API_KEY` env vars) with a deterministic keyword-rule fallback — no key required to run the app.
-- **Later (Phase C):** recurring expenses, Auth.js multi-user, Postgres (Neon) deployment.
+- **Phase B (shipped):** provider-agnostic AI auto-categorization (`AI_PROVIDER` / `AI_MODEL` / `AI_BASE_URL` / `AI_API_KEY` env vars) with a deterministic keyword-rule fallback — no key required to run the app.
+- **Phase C (shipped):** recurring expenses — schedules computed from the start-date anchor (month-end clamping), materialized on read instead of a cron job, idempotent thanks to a `(recurringId, date)` unique index, with pause / resume / skip and per-engine migrations (SQLite + Postgres).
+- **Next:** Auth.js multi-user with per-user data (needs a provider choice: OAuth app or email service), an insights page, and a feedback loop where correcting a suggestion retrains the keyword rules.

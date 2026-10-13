@@ -18,6 +18,7 @@ import {
   type PaymentMethod,
 } from "@/lib/validators/expense";
 import { getDashboardData } from "@/lib/services/dashboard";
+import { runDueRecurring } from "@/lib/services/recurring";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -44,6 +45,8 @@ export default async function DashboardPage({
 }) {
   const sp = await searchParams;
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month ?? "") ? sp.month! : currentMonthKey();
+  // Bring recurring templates up to date first so today's numbers include them.
+  await runDueRecurring();
   const d = await getDashboardData(month);
 
   const budget = d.budgetData.overall;

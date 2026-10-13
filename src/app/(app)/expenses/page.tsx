@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, ReceiptText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, ReceiptText, Repeat } from "lucide-react";
 import Link from "next/link";
 import { dateToISODate, formatDayLabel } from "@/lib/dates";
 import { formatINR } from "@/lib/money";
@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { runDueRecurring } from "@/lib/services/recurring";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { ExpenseFilters } from "@/components/expenses/expense-filters";
 import { ExpenseRowActions } from "@/components/expenses/expense-row-actions";
@@ -32,6 +33,9 @@ export default async function ExpensesPage({
 }: {
   searchParams: SearchParams;
 }) {
+  // Materialize due recurring occurrences first so this list is always current.
+  await runDueRecurring();
+
   const parsed = expenseFilterSchema.safeParse(await searchParams);
   const filters: ExpenseFilterInput = parsed.success ? { ...parsed.data, page: parsed.data.page ?? 1 } : { page: 1 };
   const parsedPage = filters.page ?? 1;
@@ -114,7 +118,15 @@ export default async function ExpensesPage({
                   </TableCell>
                   <TableCell>
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{e.merchant || "—"}</p>
+                      <p className="truncate font-medium">
+                        {e.merchant || "—"}
+                        {e.recurringId ? (
+                          <Repeat
+                            className="ml-1.5 inline size-3.5 text-muted-foreground"
+                            aria-label="Created by a recurring expense"
+                          />
+                        ) : null}
+                      </p>
                       {e.notes ? (
                         <p className="truncate text-xs text-muted-foreground">{e.notes}</p>
                       ) : null}

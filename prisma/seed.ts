@@ -152,6 +152,41 @@ async function main() {
   }
 
   console.log(`Seeded ${rows.length} demo expenses across 6 months and ${budgetPlan.length} budgets.`);
+
+  // Phase C demo: recurring subscriptions starting today. Their first
+  // occurrence is materialized the first time a page is opened.
+  const recurringSeeds: Array<{
+    merchant: string;
+    amountPaise: number;
+    categoryId: string;
+    paymentMethod: string;
+    notes: string;
+  }> = [
+    { merchant: "Netflix", amountPaise: rup(649), categoryId: cat("Entertainment"), paymentMethod: "CARD", notes: "Monthly subscription" },
+    { merchant: "Spotify", amountPaise: rup(119), categoryId: cat("Entertainment"), paymentMethod: "UPI", notes: "Monthly subscription" },
+  ];
+  let recurringCreated = 0;
+  for (const t of recurringSeeds) {
+    const existingTemplate = await prisma.recurringExpense.findFirst({
+      where: { merchant: t.merchant, frequency: "MONTHLY" },
+    });
+    if (existingTemplate) continue;
+    await prisma.recurringExpense.create({
+      data: {
+        amountPaise: t.amountPaise,
+        categoryId: t.categoryId,
+        paymentMethod: t.paymentMethod,
+        merchant: t.merchant,
+        notes: t.notes,
+        frequency: "MONTHLY",
+        interval: 1,
+        startDate: todayUTC,
+        nextDate: todayUTC,
+      },
+    });
+    recurringCreated++;
+  }
+  console.log(`Seeded ${recurringCreated} recurring templates.`);
 }
 
 main()

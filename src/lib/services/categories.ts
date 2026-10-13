@@ -52,5 +52,11 @@ export async function deleteCategory(id: string) {
       `This category is used by ${count} expense${count === 1 ? "" : "s"} — archive it instead.`
     );
   }
+  const recurring = await prisma.recurringExpense.count({ where: { categoryId: id } });
+  if (recurring > 0) {
+    throw new ServiceError(
+      `This category is used by ${recurring} recurring expense${recurring === 1 ? "" : "s"} — archive it instead.`
+    );
+  }
   await prisma.category.delete({ where: { id } }); // budgets cascade via schema
 }

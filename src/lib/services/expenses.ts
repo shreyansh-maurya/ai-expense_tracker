@@ -3,7 +3,7 @@ import { parseUTCMidnight } from "@/lib/dates";
 import { parseAmountToPaise } from "@/lib/money";
 import type { PaymentMethod } from "@/lib/validators/expense";
 import type { ExpenseFilterInput } from "@/lib/validators/expense";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { ServiceError } from "./errors";
 
 export const PAGE_SIZE = 20;
@@ -94,7 +94,7 @@ function toData(input: ExpenseWriteInput): Prisma.ExpenseCreateInput {
   };
 }
 
-async function assertCategoryUsable(categoryId: string) {
+export async function assertCategoryUsable(categoryId: string) {
   const category = await prisma.category.findUnique({ where: { id: categoryId } });
   if (!category) throw new ServiceError("Category not found");
   if (category.isArchived) throw new ServiceError("That category is archived — pick another");
@@ -110,11 +110,20 @@ export async function updateExpense(id: string, input: ExpenseWriteInput) {
   const existing = await prisma.expense.findUnique({ where: { id } });
   if (!existing) throw new ServiceError("Expense not found");
   await assertCategoryUsable(input.categoryId);
-  return prisma.expense.update({
-    where: { id },
-    data: toData(input),
-    include: { category: true },
-  });
+  try {
+    return await prisma.expense.update({
+      where: { id },
+      data: toData(input),
+      include: { category: true },
+    });
+  } catch (e) {
+    // (recurringId, date) unique index — the new date collides with another
+    // materialized occurrence of the same recurring template.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      throw new ServiceError("Another occurrence of that recurring expense already uses that date");
+    }
+    throw e;
+  }
 }
 
 export async function deleteExpense(id: string) {
