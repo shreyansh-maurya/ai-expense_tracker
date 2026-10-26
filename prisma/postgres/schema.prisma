@@ -87,3 +87,20 @@ model Budget {
   @@unique([categoryId, month])
   @@index([month])
 }
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  title      String
+  url        String? // product page on the store (optional — offline/to-store items allowed)
+  store      String // AMAZON | FLIPKART | MYNTRA | ... | OTHER (validated union in app layer)
+  imageUrl   String?
+  pricePaise Int? // price tracked when added (or when logged)
+  priority   String   @default("MEDIUM") // LOW | MEDIUM | HIGH
+  status     String   @default("WANTED") // WANTED | ORDERED | BOUGHT | DROPPED
+  notes      String?
+  expenseId  String? // set when bought and logged as an expense (scalar link, no FK)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+}

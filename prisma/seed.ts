@@ -187,6 +187,70 @@ async function main() {
     recurringCreated++;
   }
   console.log(`Seeded ${recurringCreated} recurring templates.`);
+
+  // Wishlist demo: the user's planned purchases across Indian stores.
+  const wishlistSeeds: Array<{
+    title: string;
+    url: string | null;
+    store: string;
+    pricePaise: number;
+    priority: string;
+    status: string;
+    notes: string;
+    imageUrl: string | null;
+  }> = [
+    {
+      title: "Wireless earbuds",
+      url: "https://www.amazon.in/dp/B0DEMO1234",
+      store: "AMAZON",
+      pricePaise: rup(2499),
+      priority: "HIGH",
+      status: "WANTED",
+      notes: "Wait for a festival sale price",
+      imageUrl: null,
+    },
+    {
+      title: "Running shoes",
+      url: "https://www.myntra.com/shoes/demo-run-2026",
+      store: "MYNTRA",
+      pricePaise: rup(3999),
+      priority: "MEDIUM",
+      status: "WANTED",
+      notes: "Size 9, prefer black",
+      imageUrl: null,
+    },
+    {
+      title: "Standing desk converter",
+      url: "https://www.flipkart.com/demo-standing-desk",
+      store: "FLIPKART",
+      pricePaise: rup(8999),
+      priority: "LOW",
+      status: "ORDERED",
+      notes: "Ordered during Big Billion Days",
+      imageUrl: null,
+    },
+  ];
+  let wishlistCreated = 0;
+  for (const w of wishlistSeeds) {
+    if (w.url) {
+      const dupe = await prisma.wishlistItem.findFirst({ where: { url: w.url } });
+      if (dupe) continue;
+    }
+    await prisma.wishlistItem.create({
+      data: {
+        title: w.title,
+        url: w.url,
+        store: w.store,
+        imageUrl: w.imageUrl,
+        pricePaise: w.pricePaise,
+        priority: w.priority,
+        status: w.status,
+        notes: w.notes,
+      },
+    });
+    wishlistCreated++;
+  }
+  console.log(`Seeded ${wishlistCreated} wishlist items.`);
 }
 
 main()
