@@ -7,6 +7,7 @@ import {
   ImageOff,
   Loader2,
   PackageCheck,
+  Scale,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +24,9 @@ import {
 import { formatINR } from "@/lib/money";
 import { todayISODate } from "@/lib/dates";
 import type { WishlistRow } from "@/lib/services/wishlist";
+import type { PriceQuoteRow } from "@/lib/services/wishlist-prices";
+import { summarizeQuotes } from "@/lib/wishlist-prices";
+import { PriceCompareDialog } from "@/components/wishlist/price-compare-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +50,19 @@ const STATUS_LABELS: Record<string, string> = {
   DROPPED: "Dropped",
 };
 
+/** One-line Flash-style hint: cheapest tracked store for this item. */
+function BestPriceHint({ quotes }: { quotes: PriceQuoteRow[] }) {
+  const summary = summarizeQuotes(quotes);
+  if (!summary) return null;
+  const bestLabel =
+    WISHLIST_STORE_LABELS[summary.best.store as WishlistStore] ?? summary.best.store;
+  return (
+    <span className="text-xs text-muted-foreground">
+      Best: {formatINR(summary.best.pricePaise, { decimals: false })} at {bestLabel}
+    </span>
+  );
+}
+
 const PRIORITY_BADGE: Record<
   string,
   { label: string; variant: "destructive" | "secondary" | "outline" | null }
@@ -58,9 +75,11 @@ const PRIORITY_BADGE: Record<
 export function WishlistItemCard({
   item,
   categories,
+  quotes = [],
 }: {
   item: WishlistRow;
   categories: { id: string; name: string; color: string }[];
+  quotes?: PriceQuoteRow[];
 }) {
   const [pending, setPending] = React.useState(false);
   const [boughtOpen, setBoughtOpen] = React.useState(false);
@@ -123,11 +142,12 @@ export function WishlistItemCard({
         <p className="line-clamp-2 text-xs text-muted-foreground">{item.notes}</p>
       ) : null}
 
-      <div className="mt-auto flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold tabular-nums">
-          {item.pricePaise != null ? formatINR(item.pricePaise) : "—"}
-        </span>
-        <div className="flex items-center gap-1">
+      <div className="mt-auto space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold tabular-nums">
+            {item.pricePaise != null ? formatINR(item.pricePaise) : "—"}
+          </span>
+          <div className="flex items-center gap-1">
           {item.url ? (
             <Button asChild variant="ghost" size="icon" aria-label="Open product link">
               <a href={item.url} target="_blank" rel="noopener noreferrer">
@@ -146,6 +166,21 @@ export function WishlistItemCard({
               priority: item.priority,
               notes: item.notes ?? "",
             }}
+          />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <BestPriceHint quotes={quotes} />
+          <PriceCompareDialog
+            itemId={item.id}
+            itemTitle={item.title}
+            quotes={quotes}
+            trigger={
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground">
+                <Scale />
+                Compare
+              </Button>
+            }
           />
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseAmountToPaise } from "@/lib/money";
 import { expenseInputSchema } from "@/lib/validators/expense";
 import {
   detectStoreFromUrl,
@@ -57,6 +58,22 @@ export const wishlistStatusSchema = z.enum(WISHLIST_STATUSES, {
 });
 
 export type WishlistInput = z.infer<typeof wishlistInputSchema>;
+
+/** A price you saw at a store while checking an item — the stored "current price at this store". */
+const quoteAmount = z
+  .string()
+  .trim()
+  .min(1, "Enter the price you saw")
+  .refine((v) => parseAmountToPaise(v) !== null, "Enter a valid price, e.g. 1,299")
+  .refine((v) => (parseAmountToPaise(v) ?? 0) > 0, "Price must be greater than zero");
+
+export const wishlistPriceQuoteSchema = z.object({
+  store: z.enum(WISHLIST_STORES, { errorMap: () => ({ message: "Pick a store" }) }),
+  price: quoteAmount,
+  url: z.preprocess(emptyToUndef, httpUrl("listing").optional()),
+});
+
+export type WishlistPriceQuoteInput = z.infer<typeof wishlistPriceQuoteSchema>;
 
 /** "Mark bought" logs a real expense using the exact same contract as the expense form. */
 export const boughtExpenseSchema = expenseInputSchema;

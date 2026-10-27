@@ -102,5 +102,23 @@ model WishlistItem {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  quotes WishlistPriceQuote[]
+
   @@index([status])
+}
+
+model WishlistPriceQuote {
+  id             String   @id @default(cuid())
+  wishlistItemId String
+  store          String // AMAZON | FLIPKART | MYNTRA | ... | OTHER (validated union in app layer)
+  pricePaise     Int // integer paise, never floats
+  url            String? // the listing link the price came from
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  item WishlistItem @relation(fields: [wishlistItemId], references: [id], onDelete: Cascade)
+
+  // one tracked (current) price per store per item — re-checking a store updates it
+  @@unique([wishlistItemId, store])
+  @@index([wishlistItemId])
 }

@@ -5,6 +5,7 @@ import { parseAmountToPaise } from "@/lib/money";
 import {
   boughtExpenseSchema,
   wishlistInputSchema,
+  wishlistPriceQuoteSchema,
   wishlistStatusSchema,
 } from "@/lib/validators/wishlist";
 import {
@@ -14,6 +15,7 @@ import {
   setWishlistStatus,
   updateWishlistItem,
 } from "@/lib/services/wishlist";
+import { deletePriceQuote, upsertPriceQuote } from "@/lib/services/wishlist-prices";
 import { ActionResult, toErrorMessage, zodFirstError } from "./helpers";
 
 function revalidateAll() {
@@ -88,5 +90,38 @@ export async function deleteWishlistAction(id: string): Promise<ActionResult> {
     return { ok: false, error: toErrorMessage(e) };
   }
   revalidateAll();
+  return { ok: true };
+}
+
+/** Record/update the price seen at one store for a wishlist item (compare feature). */
+export async function savePriceQuoteAction(
+  itemId: string,
+  input: unknown
+): Promise<ActionResult> {
+  const parsed = wishlistPriceQuoteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: zodFirstError(parsed.error) };
+  const d = parsed.data;
+  try {
+    await upsertPriceQuote(itemId, {
+      store: d.store,
+      pricePaise: parseAmountToPaise(d.price)!,
+      url: d.url,
+    });
+  } catch (e) {
+    return { ok: false, error: toErrorMessage(e) };
+  }
+  revalidatePath("/wishlist");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function deletePriceQuoteAction(quoteId: string): Promise<ActionResult> {
+  try {
+    await deletePriceQuote(quoteId);
+  } catch (e) {
+    return { ok: false, error: toErrorMessage(e) };
+  }
+  revalidatePath("/wishlist");
+  revalidatePath("/");
   return { ok: true };
 }

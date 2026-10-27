@@ -1,6 +1,7 @@
 import { Gift, ShoppingBag } from "lucide-react";
 import { formatINR } from "@/lib/money";
 import { listWishlist } from "@/lib/services/wishlist";
+import { listAllPriceQuotes } from "@/lib/services/wishlist-prices";
 import { listActiveCategories } from "@/lib/services/categories";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -47,7 +48,11 @@ function groupOf(rows: Awaited<ReturnType<typeof listWishlist>>) {
 }
 
 export default async function WishlistPage() {
-  const [rows, categories] = await Promise.all([listWishlist(), listActiveCategories()]);
+  const [rows, categories, quotesByItem] = await Promise.all([
+    listWishlist(),
+    listActiveCategories(),
+    listAllPriceQuotes(),
+  ]);
   const { groups, wanted, ordered, bought } = groupOf(rows);
 
   const wishlistValuePaise = wanted
@@ -61,8 +66,8 @@ export default async function WishlistPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Wishlist</h1>
           <p className="text-sm text-muted-foreground">
-            Products you plan to buy from Amazon, Flipkart, Myntra and more — with the cost kept
-            visible before it leaves your account
+            Products you plan to buy from Amazon, Flipkart, Myntra and more — track and compare
+            prices across stores before the money leaves your account
           </p>
         </div>
         <WishlistAddTrigger />
@@ -131,7 +136,12 @@ export default async function WishlistPage() {
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {g.rows.map((r) => (
-                      <WishlistItemCard key={r.id} item={r} categories={categories} />
+                      <WishlistItemCard
+                        key={r.id}
+                        item={r}
+                        categories={categories}
+                        quotes={quotesByItem[r.id] ?? []}
+                      />
                     ))}
                   </div>
                 )}
