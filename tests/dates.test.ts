@@ -63,11 +63,38 @@ describe("parseFlexibleDate", () => {
     expect(parseFlexibleDate("13/10/2026")).toBe("2026-10-13"); // day > 12
   });
 
+  it("accepts the formats bank and spreadsheet exports actually produce", () => {
+    expect(parseFlexibleDate("2026/10/06")).toBe("2026-10-06");
+    expect(parseFlexibleDate("06.10.2026")).toBe("2026-10-06");
+    expect(parseFlexibleDate("6/10/26")).toBe("2026-10-06"); // two-digit year
+    expect(parseFlexibleDate("06-October-2026")).toBe("2026-10-06");
+    expect(parseFlexibleDate("Oct 6, 2026")).toBe("2026-10-06");
+    expect(parseFlexibleDate("6 Oct 26")).toBe("2026-10-06");
+    expect(parseFlexibleDate("2026-10-06T00:00:00.000Z")).toBe("2026-10-06");
+    expect(parseFlexibleDate("2026-10-06 14:30:00")).toBe("2026-10-06");
+    expect(parseFlexibleDate("  06/10/2026  ")).toBe("2026-10-06");
+    expect(parseFlexibleDate("| 06/10/2026 |")).toBe("2026-10-06");
+  });
+
+  it("reads the month first only when the day-first reading is impossible", () => {
+    expect(parseFlexibleDate("13/10/2026")).toBe("2026-10-13");
+    expect(parseFlexibleDate("10/13/2026")).toBe("2026-10-13"); // 13 cannot be a month
+  });
+
+  it("reads Excel/Sheets serial dates", () => {
+    const serial = Math.round(
+      (Date.parse("2026-10-06T00:00:00Z") - Date.UTC(1899, 11, 30)) / 86_400_000
+    );
+    expect(parseFlexibleDate(String(serial))).toBe("2026-10-06");
+    expect(parseFlexibleDate("45123.75")).toBe("2023-07-16");
+  });
+
   it("rejects invalid input", () => {
     expect(parseFlexibleDate("31/02/2026")).toBeNull();
     expect(parseFlexibleDate("hello")).toBeNull();
     expect(parseFlexibleDate("")).toBeNull();
-    expect(parseFlexibleDate("2026/10/06")).toBeNull();
+    expect(parseFlexibleDate("13/13/2026")).toBeNull();
+    expect(parseFlexibleDate("12/12/999")).toBeNull();
   });
 });
 

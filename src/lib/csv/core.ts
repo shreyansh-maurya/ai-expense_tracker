@@ -45,27 +45,96 @@ export function normalizePaymentMethod(raw: string | undefined | null): PaymentM
   return "OTHER";
 }
 
+/** Spreadsheet/markdown exports pad cells and wrap them in pipes: "| 06/10/2026 |". */
+export function cleanCell(value: string | undefined | null): string {
+  return (value ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/^[\s|]+/, "")
+    .replace(/[\s|]+$/, "")
+    .trim();
+}
+
+/** A row with no values at all — blank lines and `| | |` padding rows. */
+export function isBlankRow(raw: Record<string, string>): boolean {
+  return Object.values(raw).every((v) => cleanCell(v) === "");
+}
+
+/** Markdown table rules (`| --- | :--: |`) are layout, not data. */
+export function isSeparatorRow(raw: Record<string, string>): boolean {
+  const cells = Object.values(raw).map(cleanCell).filter((c) => c !== "");
+  return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
+}
+
 export type ImportField = "date" | "amount" | "category" | "paymentMethod" | "merchant" | "notes";
 export type ColumnMapping = Partial<Record<ImportField, string>>;
 
-const DETECTORS: Array<[ImportField, RegExp]> = [
-  ["date", /date/i],
-  ["amount", /amount|value|price|spent|cost/i],
-  ["category", /categor|type|tag/i],
-  ["paymentMethod", /payment|method|mode|paid\s*via/i],
-  ["merchant", /merchant|payee|description|vendor|party|to/i],
-  ["notes", /note|remark|comment|memo|detail/i],
-];
+/** Header text with `_`, `-`, `.` flattened, so words match across separators. */
+function normalizeHeader(header: string): string {
+  return cleanCell(header)
+    .toLowerCase()
+    .replace(/[_\-./]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-/** Guess a column mapping from CSV headers. `used` columns are excluded first. */
+/**
+ * Header keywords per field, most specific first. Matching is scored rather than
+ * first-fit: a wide dataset column like `income_type`, `loan_payment` or
+ * `debt_to_income_ratio` must not steal Category / Payment method / Merchant.
+ */
+const FIELD_KEYWORDS: Record<ImportField, string[]> = {
+  date: ["transaction date", "txn date", "date", "posted", "when", "day"],
+  amount: [
+    "transaction amount",
+    "monthly expense total",
+    "amount",
+    "amt",
+    "value",
+    "total",
+    "sum",
+    "debit",
+    "expense",
+    "expenditure",
+    "spent",
+    "cost",
+    "price",
+  ],
+  category: ["category", "categories", "tag", "type"],
+  paymentMethod: ["payment method", "payment mode", "paid via", "method", "mode"],
+  merchant: ["merchant", "payee", "vendor", "narration", "description", "party"],
+  notes: ["notes", "note", "remarks", "remark", "comment", "memo", "details"],
+};
+
+/** Exact name beats a whole-word phrase, which beats a substring of a long header. */
+function scoreHeader(header: string, keywords: readonly string[]): number {
+  const padded = ` ${header} `;
+  let best = 0;
+  for (const kw of keywords) {
+    if (header === kw) best = Math.max(best, 1000 + kw.length);
+    else if (padded.includes(` ${kw} `)) best = Math.max(best, 500 + kw.length * 10 - header.length);
+    else if (header.includes(kw)) best = Math.max(best, 200 + kw.length - header.length);
+  }
+  return best;
+}
+
+/** Guess a column mapping from CSV headers; unmatched columns are simply left out. */
 export function detectMapping(headers: string[]): ColumnMapping {
   const mapping: ColumnMapping = {};
   const used = new Set<string>();
-  for (const [field, re] of DETECTORS) {
-    const match = headers.find((h) => h.trim() !== "" && !used.has(h) && re.test(h));
-    if (match) {
-      mapping[field] = match;
-      used.add(match);
+  for (const field of Object.keys(FIELD_KEYWORDS) as ImportField[]) {
+    let bestHeader: string | null = null;
+    let bestScore = 0;
+    for (const header of headers) {
+      if (!header || used.has(header)) continue;
+      const score = scoreHeader(normalizeHeader(header), FIELD_KEYWORDS[field]);
+      if (score > bestScore) {
+        bestHeader = header;
+        bestScore = score;
+      }
+    }
+    if (bestHeader) {
+      mapping[field] = bestHeader;
+      used.add(bestHeader);
     }
   }
   return mapping;
@@ -94,7 +163,7 @@ export function mapRow(
   knownCategories: readonly string[]
 ): MappedRow {
   const errors: string[] = [];
-  const get = (f: ImportField): string => (mapping[f] ? (raw[mapping[f]!] ?? "").trim() : "");
+  const get = (f: ImportField): string => (mapping[f] ? cleanCell(raw[mapping[f]!]) : "");
 
   const dateISO = parseFlexibleDate(get("date"));
   if (mapping.date && !dateISO) errors.push("Unrecognized date");

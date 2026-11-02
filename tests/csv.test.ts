@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCsv,
+  cleanCell,
   detectMapping,
   escapeCsvField,
+  isBlankRow,
+  isSeparatorRow,
   mapRow,
   normalizePaymentMethod,
   rowKey,
@@ -58,6 +61,50 @@ describe("detectMapping", () => {
     expect(m.date).toBeUndefined();
     expect(m.amount).toBeUndefined();
   });
+
+  it("recognises dataset-style headers", () => {
+    const m = detectMapping(["date", "monthly_expense_total", "category"]);
+    expect(m).toEqual({
+      date: "date",
+      amount: "monthly_expense_total",
+      category: "category",
+    });
+  });
+
+  it("drops wide dataset columns that only share a word with another field", () => {
+    const headers = [
+      "date", "user_id", "monthly_income", "monthly_expense_total", "savings_rate",
+      "budget_goal", "financial_scenario", "credit_score", "debt_to_income_ratio",
+      "loan_payment", "investment_amount", "subscription_services", "emergency_fund",
+      "transaction_count", "fraud_flag", "discretionary_spending", "essential_spending",
+      "income_type", "rent_or_mortgage", "category", "cash_flow_status",
+      "financial_advice_score", "financial_stress_level", "actual_savings",
+    ];
+    const m = detectMapping(headers);
+    // Only the three columns our site actually has are bound.
+    expect(m).toEqual({ date: "date", amount: "monthly_expense_total", category: "category" });
+    expect(m.merchant).toBeUndefined();
+    expect(m.paymentMethod).toBeUndefined();
+  });
+});
+
+describe("cleanCell / blank and separator rows", () => {
+  it("strips the pipes and padding a spreadsheet export adds", () => {
+    expect(cleanCell("| 06/10/2026 |")).toBe("06/10/2026");
+    expect(cleanCell("  Swiggy  ")).toBe("Swiggy");
+    expect(cleanCell(undefined)).toBe("");
+  });
+
+  it("spots rows that carry no data", () => {
+    expect(isBlankRow({ a: "", b: "  " })).toBe(true);
+    expect(isBlankRow({ a: "| |", b: "" })).toBe(true);
+    expect(isBlankRow({ a: "06/10/2026", b: "" })).toBe(false);
+  });
+
+  it("spots markdown table rules", () => {
+    expect(isSeparatorRow({ a: "---", b: ":--:" })).toBe(true);
+    expect(isSeparatorRow({ a: "---", b: "Date" })).toBe(false);
+  });
 });
 
 describe("mapRow", () => {
@@ -92,6 +139,18 @@ describe("mapRow", () => {
     expect(row.errors).toContain("Unrecognized date");
     expect(row.errors).toContain("Invalid amount");
     expect(row.categoryName).toBe("Other");
+  });
+
+  it("reads padded, piped cells", () => {
+    const row = mapRow(
+      3,
+      { Date: "| 06/10/2026 |", Amount: " 1,299.00 ", Category: " Shopping " },
+      mapping,
+      known
+    );
+    expect(row.dateISO).toBe("2026-10-06");
+    expect(row.amountPaise).toBe(129900);
+    expect(row.errors).toEqual([]);
   });
 
   it("keeps unknown category names for the importer to create", () => {

@@ -90,28 +90,81 @@ const MONTH_LOOKUP: Record<string, number> = {
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };
 
+function monthFromName(name: string): number | undefined {
+  const key = name.toLowerCase().replace(/[^a-z]/g, "");
+  if (key.length < 3) return undefined;
+  return MONTH_LOOKUP[key.slice(0, 3)];
+}
+
+/** Trim padding, stray quotes and the pipes a spreadsheet/markdown export adds. */
+function cleanDateInput(input: string): string {
+  return input
+    .replace(/\u00a0/g, " ")
+    .replace(/^[\s"'|\[\]()]+/, "")
+    .replace(/[\s"'|\[\]()]+$/, "")
+    .trim();
+}
+
+/** Two-digit years: 00–69 → 2000s, 70–99 → 1900s. */
+function expandYear(raw: string): number {
+  const y = Number(raw);
+  return raw.length === 2 ? (y < 70 ? 2000 + y : 1900 + y) : y;
+}
+
 /**
- * Parse a date string in any of the accepted formats into ISO "YYYY-MM-DD".
- * Accepts: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, "6 Oct 2026", "06 October 2026".
- * Day-first (Indian convention) is assumed for numeric slash/dash formats.
+ * Parse a date string in any common spreadsheet/bank format into ISO "YYYY-MM-DD".
+ *
+ * Accepts (among others): `2026-10-06`, `2026/10/06`, ISO timestamps
+ * (`2026-10-06T00:00:00Z`), `06/10/2026`, `6-10-26`, `06.10.2026`,
+ * `6 Oct 2026`, `06-October-2026`, `Oct 6, 2026`, and Excel/Sheets serial
+ * dates (`46382`). Numeric day/month/year is read day-first (Indian
+ * convention) unless only the month-first reading is possible.
+ *
  * Returns null if unparseable or not a real calendar date.
  */
 export function parseFlexibleDate(input: string): string | null {
-  const s = input.trim();
+  // Drop a trailing time part and any surrounding decoration first.
+  const s = cleanDateInput(cleanDateInput(input).replace(/[T\s]+\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(z|[+-]\d{2}:?\d{2})?$/i, ""));
   if (!s) return null;
 
   let y: number, mo: number, d: number;
+  let m: RegExpExecArray | null;
 
-  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
-  if (m) {
+  // Excel / Google Sheets serial date: days since 1899-12-30 (≈1954–2089 here).
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s));
+    if (serial >= 20000 && serial <= 80000) {
+      const dt = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000);
+      return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+    }
+    return null;
+  }
+
+  if ((m = /^(\d{4})[-/.]{1}(\d{1,2})[-/.]{1}(\d{1,2})$/.exec(s))) {
+    // Year first: 2026-10-06, 2026/10/06, 2026.10.06
     y = Number(m[1]); mo = Number(m[2]) - 1; d = Number(m[3]);
-  } else if ((m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s))) {
-    // DD/MM/YYYY or DD-MM-YYYY (day-first; Indian convention)
-    d = Number(m[1]); mo = Number(m[2]) - 1; y = Number(m[3]);
-  } else if ((m = /^(\d{1,2})[\s-]([A-Za-z]{3,})[\s-](\d{4})$/.exec(s))) {
-    const month = MONTH_LOOKUP[m[2].slice(0, 3).toLowerCase()];
+  } else if ((m = /^(\d{1,2})[-/.]{1}(\d{1,2})[-/.]{1}(\d{2}|\d{4})$/.exec(s))) {
+    // Day-first (Indian) unless only month-first can be valid.
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    y = expandYear(m[3]);
+    if (a > 12 && b <= 12) {
+      d = a; mo = b - 1;
+    } else if (b > 12 && a <= 12) {
+      d = b; mo = a - 1; // M/D/YYYY
+    } else {
+      d = a; mo = b - 1;
+    }
+  } else if ((m = /^(\d{1,2})[\s.\-]+([A-Za-z]{3,})\.?[\s,\-]+(\d{2}|\d{4})$/.exec(s))) {
+    // 6 Oct 2026, 06-October-2026, 6 Oct 26
+    const month = monthFromName(m[2]);
     if (month === undefined) return null;
-    d = Number(m[1]); mo = month; y = Number(m[3]);
+    d = Number(m[1]); mo = month; y = expandYear(m[3]);
+  } else if ((m = /^([A-Za-z]{3,})\.?[\s\-]+(\d{1,2}),?[\s\-]+(\d{2}|\d{4})$/.exec(s))) {
+    // Oct 6, 2026 / October 6 26
+    const month = monthFromName(m[1]);
+    if (month === undefined) return null;
+    d = Number(m[2]); mo = month; y = expandYear(m[3]);
   } else {
     return null;
   }

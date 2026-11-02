@@ -4,7 +4,14 @@ import * as React from "react";
 import Papa from "papaparse";
 import { CheckCircle2, FileSpreadsheet, Loader2, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { detectMapping, mapRow, type ColumnMapping } from "@/lib/csv/core";
+import {
+  cleanCell,
+  detectMapping,
+  isBlankRow,
+  isSeparatorRow,
+  mapRow,
+  type ColumnMapping,
+} from "@/lib/csv/core";
 import { importExpenseRowsAction } from "@/lib/actions/import";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,11 +58,25 @@ export function ImportWizard({ knownCategories }: { knownCategories: string[] })
       header: true,
       skipEmptyLines: true,
       complete: ({ data, meta }) => {
-        const cols = (meta.fields ?? []).filter((f): f is string => Boolean(f));
+        const rawCols = (meta.fields ?? []).filter((f): f is string => Boolean(f));
+        // Headers from spreadsheet/markdown exports arrive padded and piped
+        // ("| monthly_expense_total |"), so normalise them before matching.
+        const colName = new Map(rawCols.map((f) => [f, cleanCell(f)] as const));
+        const cols = [...new Set(rawCols.map((f) => colName.get(f) ?? f))].filter(
+          (c) => c !== "" && !/^_\d+$/.test(c)
+        );
+        const cleaned = data
+          .filter((r) => !isBlankRow(r) && !isSeparatorRow(r))
+          .map((r) =>
+            Object.fromEntries(Object.entries(r).map(([k, v]) => [colName.get(k) ?? k, v]))
+          );
         setHeaders(cols);
-        setRows(data);
+        setRows(cleaned);
         setMapping(detectMapping(cols));
         setFileName(file.name);
+        if (cleaned.length === 0) {
+          toast.warning("That file has column headers but no data rows");
+        }
       },
       error: (err) => toast.error(`Could not parse CSV: ${err.message}`),
     });
