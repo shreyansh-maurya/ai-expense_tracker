@@ -83,6 +83,14 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* Native dropdown lists follow the page's scheme, so options stay readable
+     in dark mode instead of rendering light text on a light popup. */
+  select {
+    color-scheme: light;
+  }
+  .dark select {
+    color-scheme: dark;
+  }
 }
 
 /* Dialog animations (no extra animation library) */

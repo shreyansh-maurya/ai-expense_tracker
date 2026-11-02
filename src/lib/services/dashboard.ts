@@ -49,17 +49,26 @@ export async function getDashboardData(month: string) {
   const totalPaise = totalAgg._sum.amountPaise ?? 0;
   const prevPaise = prevAgg._sum.amountPaise ?? 0;
 
-  const catIds = groups.map((g) => g.categoryId);
-  const cats = catIds.length
-    ? await prisma.category.findMany({ where: { id: { in: catIds } } })
-    : [];
-  const catMap = new Map(cats.map((c) => [c.id, c]));
-  const breakdown = groups.map((g) => ({
-    categoryId: g.categoryId,
-    name: catMap.get(g.categoryId)?.name ?? "Unknown",
-    color: catMap.get(g.categoryId)?.color ?? "#64748b",
-    amountPaise: g._sum.amountPaise ?? 0,
-  }));
+  // Every category keeps its slot in the breakdown (zero when it went unused this
+  // month), so the donut shows the same categories — and the same colours — in the
+  // same order for every month; only the arc sizes change.
+  const cats = await prisma.category.findMany({
+    select: { id: true, name: true, color: true, isArchived: true },
+    orderBy: { name: "asc" },
+  });
+  const spentByCategory = new Map(groups.map((g) => [g.categoryId, g._sum.amountPaise ?? 0]));
+  const breakdown = cats
+    .filter((c) => !c.isArchived || (spentByCategory.get(c.id) ?? 0) > 0)
+    .map((c) => ({
+      categoryId: c.id,
+      name: c.name,
+      color: c.color,
+      amountPaise: spentByCategory.get(c.id) ?? 0,
+    }));
+  const topCategory = breakdown.reduce<(typeof breakdown)[number] | null>(
+    (best, c) => (c.amountPaise > (best?.amountPaise ?? 0) ? c : best),
+    null
+  );
 
   const keys = lastNMonthKeys(12, month);
   const trendMap = new Map(keys.map((k) => [k, 0]));
@@ -87,7 +96,7 @@ export async function getDashboardData(month: string) {
     prevPaise,
     momChangePct,
     avgPerDayPaise,
-    topCategory: breakdown[0] ?? null,
+    topCategory,
     breakdown,
     trend,
     recent,

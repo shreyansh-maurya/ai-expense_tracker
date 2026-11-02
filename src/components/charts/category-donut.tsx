@@ -20,16 +20,20 @@ export function CategoryDonut({
 }) {
   const [sort, setSort] = React.useState<SortMode>("alphabetical");
 
-  // The server sends amount-descending; presentation order is chosen client-side:
-  // alphabetical by category name by default, or by amount on demand.
-  const slices = React.useMemo(() => {
-    const base = data.slice(0, 10);
-    return sort === "alphabetical"
-      ? [...base].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-      : [...base].sort((a, b) => b.amountPaise - a.amountPaise);
+  // Colours belong to the category, and the order never varies (alphabetical by
+  // default), so switching months only changes arc sizes — not which colour sits
+  // where. Categories without spending this month are simply not in the ring.
+  const withSpend = React.useMemo(() => {
+    const ordered =
+      sort === "alphabetical"
+        ? [...data].sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+          )
+        : [...data].sort((a, b) => b.amountPaise - a.amountPaise);
+    return ordered.filter((s) => s.amountPaise > 0);
   }, [data, sort]);
 
-  if (data.length === 0) {
+  if (withSpend.length === 0) {
     return (
       <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
         No spending this month yet
@@ -73,15 +77,18 @@ export function CategoryDonut({
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={slices}
+                data={withSpend}
                 dataKey="amountPaise"
                 nameKey="name"
                 innerRadius="62%"
                 outerRadius="88%"
                 paddingAngle={2}
                 strokeWidth={0}
+                // Drawn immediately: the entrance animation only advances on
+                // animation frames, which never run while the tab is backgrounded.
+                isAnimationActive={false}
               >
-                {slices.map((s) => (
+                {withSpend.map((s) => (
                   <Cell key={s.name} fill={s.color} />
                 ))}
               </Pie>
@@ -102,7 +109,7 @@ export function CategoryDonut({
         </div>
 
         <ul className="w-full space-y-1.5">
-          {slices.map((s) => {
+          {withSpend.map((s) => {
             const pct = totalPaise > 0 ? Math.round((s.amountPaise / totalPaise) * 100) : 0;
             return (
               <li key={s.name} className="flex items-center gap-2 text-sm">
