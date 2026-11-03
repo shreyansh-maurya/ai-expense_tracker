@@ -16,8 +16,11 @@ const DAY_MS = 86_400_000;
 
 // ── Export ──────────────────────────────────────────────────────────────────
 
-export async function getExpensesForExport({ from, to }: { from?: string; to?: string }) {
-  const where: Prisma.ExpenseWhereInput = {};
+export async function getExpensesForExport(
+  userId: string,
+  { from, to }: { from?: string; to?: string }
+) {
+  const where: Prisma.ExpenseWhereInput = { userId };
   const date: Prisma.DateTimeFilter = {};
   const fromDate = from ? parseUTCMidnight(from) : null;
   if (fromDate) date.gte = fromDate;
@@ -84,6 +87,7 @@ export type ImportResult = {
 };
 
 export async function importExpenseRows(
+  userId: string,
   rows: ImportPayloadRow[],
   opts: { createMissingCategories: boolean; skipDuplicates: boolean }
 ): Promise<ImportResult> {
@@ -122,6 +126,7 @@ export async function importExpenseRows(
   // Rows shipped without a category get keyword-rule suggestions first,
   // then AI (when configured) for whatever rules could not place.
   const existingForSuggest = await prisma.category.findMany({
+    where: { userId },
     select: { id: true, name: true, keywords: true, isArchived: true },
   });
   const uncategorizedIndexes: number[] = [];
@@ -146,7 +151,7 @@ export async function importExpenseRows(
   });
 
   // Resolve categories (create missing ones when allowed).
-  const existing = await prisma.category.findMany();
+  const existing = await prisma.category.findMany({ where: { userId } });
   const byLower = new Map(existing.map((c) => [c.name.toLowerCase(), c]));
   let categoriesCreated = 0;
 
@@ -163,7 +168,7 @@ export async function importExpenseRows(
     const fallback =
       otherFirst ??
       (await prisma.category.create({
-        data: { name: "Other", color: "#64748b" },
+        data: { userId, name: "Other", color: "#64748b" },
       }));
     byLower.set("other", fallback);
     for (const r of valid) {
@@ -175,6 +180,7 @@ export async function importExpenseRows(
     for (let i = 0; i < missing.length; i++) {
       const created = await prisma.category.create({
         data: {
+          userId,
           name: rawNameByLower.get(missing[i])!,
           color: PALETTE[i % PALETTE.length],
         },
@@ -187,7 +193,7 @@ export async function importExpenseRows(
   // Duplicate detection: against DB and within the batch.
   let skippedDuplicates = 0;
   const batchSeen = new Set<string>();
-  const toCreate: Array<Prisma.ExpenseCreateInput> = [];
+  const toCreate: Array<Prisma.ExpenseUncheckedCreateInput> = [];
   let vi = 0; // index into valid[] for categorizedBy lookup
 
   const merchantNorms = [
@@ -198,6 +204,7 @@ export async function importExpenseRows(
   if (merchantNorms.length > 0) {
     const dbRows = await prisma.expense.findMany({
       where: {
+        userId,
         merchantNorm: { in: merchantNorms },
         date: { gte: new Date(Math.min(...dates.map((d) => d.getTime()))), lte: new Date(Math.max(...dates.map((d) => d.getTime()))) },
       },
@@ -218,6 +225,7 @@ export async function importExpenseRows(
     const date = parseUTCMidnight(r.dateISO)!;
     const merchant = r.merchant || null;
     toCreate.push({
+      userId,
       amountPaise: r.amountPaise,
       date,
       paymentMethod: r.paymentMethod,
@@ -225,7 +233,7 @@ export async function importExpenseRows(
       merchantNorm: merchant ? merchant.toLowerCase() : null,
       notes: r.notes || null,
       categorizedBy: categorizedBy[vi] ?? "USER",
-      category: { connect: { id: byLower.get(r.categoryName.toLowerCase())!.id } },
+      categoryId: byLower.get(r.categoryName.toLowerCase())!.id,
     });
     vi++;
   }

@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { runDueRecurring } from "@/lib/services/recurring";
+import { requireUser } from "@/lib/auth";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { ExpenseFilters } from "@/components/expenses/expense-filters";
 import { ExpenseRowActions } from "@/components/expenses/expense-row-actions";
@@ -33,15 +34,20 @@ export default async function ExpensesPage({
 }: {
   searchParams: SearchParams;
 }) {
+  const user = await requireUser();
   // Materialize due recurring occurrences first so this list is always current.
-  await runDueRecurring();
+  await runDueRecurring(user.id);
 
   const parsed = expenseFilterSchema.safeParse(await searchParams);
   const filters: ExpenseFilterInput = parsed.success ? { ...parsed.data, page: parsed.data.page ?? 1 } : { page: 1 };
   const parsedPage = filters.page ?? 1;
 
-  const { rows, total, page, pageCount } = await listExpenses({ filters, page: parsedPage });
-  const allCategories = await listActiveCategories();
+  const { rows, total, page, pageCount } = await listExpenses({
+    userId: user.id,
+    filters,
+    page: parsedPage,
+  });
+  const allCategories = await listActiveCategories(user.id);
 
   const filterQs = new URLSearchParams();
   for (const [k, v] of Object.entries(filters)) {

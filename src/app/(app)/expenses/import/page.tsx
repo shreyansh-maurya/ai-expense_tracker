@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listCategories } from "@/lib/services/categories";
+import { requireUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { ImportWizard } from "@/components/import/import-wizard";
 
@@ -8,7 +9,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Import CSV" };
 
 export default async function ImportPage() {
-  const categories = await listCategories();
+  const user = await requireUser();
+  const categories = await listCategories(user.id);
 
   return (
     <div className="space-y-6">

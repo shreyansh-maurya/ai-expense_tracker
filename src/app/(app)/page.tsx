@@ -17,6 +17,7 @@ import {
   PAYMENT_METHOD_LABELS,
   type PaymentMethod,
 } from "@/lib/validators/expense";
+import { requireUser } from "@/lib/auth";
 import { getDashboardData } from "@/lib/services/dashboard";
 import { runDueRecurring } from "@/lib/services/recurring";
 import { Button } from "@/components/ui/button";
@@ -45,9 +46,10 @@ export default async function DashboardPage({
 }) {
   const sp = await searchParams;
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month ?? "") ? sp.month! : currentMonthKey();
+  const user = await requireUser();
   // Bring recurring templates up to date first so today's numbers include them.
-  await runDueRecurring();
-  const d = await getDashboardData(month);
+  await runDueRecurring(user.id);
+  const d = await getDashboardData(user.id, month);
 
   const budget = d.budgetData.overall;
   const budgetPct =

@@ -1,6 +1,20 @@
 import { PrismaClient } from "@prisma/client";
+import { randomBytes, scrypt as scryptCallback } from "node:crypto";
+import { promisify } from "node:util";
 
 const prisma = new PrismaClient();
+const scrypt = promisify(scryptCallback) as (
+  password: string,
+  salt: string,
+  keylen: number
+) => Promise<Buffer>;
+
+/** Same format as src/lib/auth.ts, so the seeded account can sign in. */
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const derived = await scrypt(password, salt, 64);
+  return `scrypt$${salt}$${derived.toString("hex")}`;
+}
 
 type CategorySeed = { name: string; color: string; icon: string; keywords: string };
 
@@ -35,19 +49,42 @@ const rup = (r: number) => Math.round(r * 100);
 async function main() {
   const demo = process.argv.includes("--demo");
 
+  // Categories and expenses belong to an account now, so seeding needs one.
+  const email = process.env.SEED_EMAIL?.trim().toLowerCase();
+  const password = process.env.SEED_PASSWORD;
+  if (!email || !password) {
+    console.log(
+      "Seed skipped — accounts own their data now. Set SEED_EMAIL and SEED_PASSWORD to seed one, " +
+        "or just create an account in the app (it starts with the default categories)."
+    );
+    return;
+  }
+
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: {},
+    create: { email, name: "Seed user", passwordHash: await hashPassword(password) },
+  });
+
   const byName = new Map<string, string>();
   for (const c of CATEGORIES) {
-    const cat = await prisma.category.upsert({
-      where: { name: c.name },
-      update: { color: c.color, icon: c.icon, keywords: c.keywords },
-      create: { ...c, isDefault: true },
+    const existing = await prisma.category.findFirst({
+      where: { userId: user.id, name: c.name },
     });
+    const cat = existing
+      ? await prisma.category.update({
+          where: { id: existing.id },
+          data: { color: c.color, icon: c.icon, keywords: c.keywords },
+        })
+      : await prisma.category.create({
+          data: { userId: user.id, ...c, isDefault: true },
+        });
     byName.set(c.name, cat.id);
   }
   console.log(`Seeded ${CATEGORIES.length} categories.`);
   if (!demo) return;
 
-  const existing = await prisma.expense.count();
+  const existing = await prisma.expense.count({ where: { userId: user.id } });
   if (existing > 0) {
     console.log("Demo data skipped — expenses already exist.");
     return;
@@ -128,6 +165,7 @@ async function main() {
     rows.map((r) =>
       prisma.expense.create({
         data: {
+          userId: user.id,
           amountPaise: r.amountPaise,
           date: r.date,
           categoryId: r.categoryId,
@@ -143,11 +181,13 @@ async function main() {
 
   for (const [catName, month, limitPaise] of budgetPlan) {
     const categoryId = catName ? cat(catName) : null;
-    const existingBudget = await prisma.budget.findFirst({ where: { categoryId, month } });
+    const existingBudget = await prisma.budget.findFirst({
+      where: { userId: user.id, categoryId, month },
+    });
     if (existingBudget) {
       await prisma.budget.update({ where: { id: existingBudget.id }, data: { limitPaise } });
     } else {
-      await prisma.budget.create({ data: { categoryId, month, limitPaise } });
+      await prisma.budget.create({ data: { userId: user.id, categoryId, month, limitPaise } });
     }
   }
 
@@ -168,11 +208,12 @@ async function main() {
   let recurringCreated = 0;
   for (const t of recurringSeeds) {
     const existingTemplate = await prisma.recurringExpense.findFirst({
-      where: { merchant: t.merchant, frequency: "MONTHLY" },
+      where: { userId: user.id, merchant: t.merchant, frequency: "MONTHLY" },
     });
     if (existingTemplate) continue;
     await prisma.recurringExpense.create({
       data: {
+        userId: user.id,
         amountPaise: t.amountPaise,
         categoryId: t.categoryId,
         paymentMethod: t.paymentMethod,
@@ -233,11 +274,14 @@ async function main() {
   let wishlistCreated = 0;
   for (const w of wishlistSeeds) {
     if (w.url) {
-      const dupe = await prisma.wishlistItem.findFirst({ where: { url: w.url } });
+      const dupe = await prisma.wishlistItem.findFirst({
+        where: { userId: user.id, url: w.url },
+      });
       if (dupe) continue;
     }
     await prisma.wishlistItem.create({
       data: {
+        userId: user.id,
         title: w.title,
         url: w.url,
         store: w.store,

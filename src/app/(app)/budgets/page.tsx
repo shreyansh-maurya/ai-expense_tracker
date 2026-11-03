@@ -6,6 +6,7 @@ import {
   monthKeyLabel,
 } from "@/lib/dates";
 import { formatINR } from "@/lib/money";
+import { requireUser } from "@/lib/auth";
 import { getMonthBudgetData } from "@/lib/services/budgets";
 import { runDueRecurring } from "@/lib/services/recurring";
 import { listActiveCategories } from "@/lib/services/categories";
@@ -39,11 +40,12 @@ export default async function BudgetsPage({
 }) {
   const sp = await searchParams;
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month ?? "") ? sp.month! : currentMonthKey();
+  const user = await requireUser();
   // Budget progress should count occurrences that became due today.
-  await runDueRecurring();
+  await runDueRecurring(user.id);
   const [data, categories] = await Promise.all([
-    getMonthBudgetData(month),
-    listActiveCategories(),
+    getMonthBudgetData(user.id, month),
+    listActiveCategories(user.id),
   ]);
 
   const budgetedRows = data.rows.filter((r) => r.budget);

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { PAYMENT_METHODS } from "@/lib/csv/core";
 import { importExpenseRows, type ImportPayloadRow, type ImportResult } from "@/lib/services/csv";
+import { requireUser } from "@/lib/auth";
 import { toErrorMessage } from "./helpers";
 
 export type ImportActionResponse =
@@ -13,6 +14,7 @@ export async function importExpenseRowsAction(
   rows: unknown,
   opts: { createMissingCategories: boolean; skipDuplicates: boolean }
 ): Promise<ImportActionResponse> {
+  const user = await requireUser();
   if (!Array.isArray(rows) || rows.length === 0) {
     return { ok: false, error: "No rows to import" };
   }
@@ -32,7 +34,7 @@ export async function importExpenseRowsAction(
     });
   }
   try {
-    const result = await importExpenseRows(payload, opts);
+    const result = await importExpenseRows(user.id, payload, opts);
     revalidatePath("/");
     revalidatePath("/expenses");
     revalidatePath("/budgets");

@@ -17,8 +17,9 @@ import { assertCategoryUsable } from "./expenses";
 
 export type RecurringListItem = Awaited<ReturnType<typeof listRecurring>>[number];
 
-export async function listRecurring() {
+export async function listRecurring(userId: string) {
   return prisma.recurringExpense.findMany({
+    where: { userId },
     include: { category: true, _count: { select: { expenses: true } } },
     orderBy: [{ isActive: "desc" }, { nextDate: "asc" }],
   });
@@ -64,19 +65,19 @@ function toRecurringData(input: RecurringWriteInput) {
   };
 }
 
-export async function createRecurring(input: RecurringWriteInput) {
-  await assertCategoryUsable(input.categoryId);
+export async function createRecurring(userId: string, input: RecurringWriteInput) {
+  await assertCategoryUsable(userId, input.categoryId);
   const { start } = parseBounds(input);
   return prisma.recurringExpense.create({
     // First occurrence is the start date itself; due ones materialize on save.
-    data: { ...toRecurringData(input), nextDate: start },
+    data: { ...toRecurringData(input), nextDate: start, user: { connect: { id: userId } } },
   });
 }
 
-export async function updateRecurring(id: string, input: RecurringWriteInput) {
-  const existing = await prisma.recurringExpense.findUnique({ where: { id } });
+export async function updateRecurring(userId: string, id: string, input: RecurringWriteInput) {
+  const existing = await prisma.recurringExpense.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Recurring expense not found");
-  await assertCategoryUsable(input.categoryId);
+  await assertCategoryUsable(userId, input.categoryId);
   const { start } = parseBounds(input);
 
   const scheduleChanged =
@@ -97,8 +98,8 @@ export async function updateRecurring(id: string, input: RecurringWriteInput) {
 }
 
 /** Pause/resume. Resuming never backfills time spent paused. */
-export async function setRecurringActive(id: string, active: boolean) {
-  const existing = await prisma.recurringExpense.findUnique({ where: { id } });
+export async function setRecurringActive(userId: string, id: string, active: boolean) {
+  const existing = await prisma.recurringExpense.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Recurring expense not found");
   if (!isRecurringFrequency(existing.frequency)) throw new ServiceError("Recurring expense has an invalid schedule");
 
@@ -114,8 +115,8 @@ export async function setRecurringActive(id: string, active: boolean) {
 }
 
 /** Skip the pending occurrence — the schedule moves on without creating it. */
-export async function skipNextOccurrence(id: string): Promise<string> {
-  const existing = await prisma.recurringExpense.findUnique({ where: { id } });
+export async function skipNextOccurrence(userId: string, id: string): Promise<string> {
+  const existing = await prisma.recurringExpense.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Recurring expense not found");
   if (!isRecurringFrequency(existing.frequency)) throw new ServiceError("Recurring expense has an invalid schedule");
   const next = nextOccurrenceAfter(existing.startDate, existing.frequency, existing.interval, existing.nextDate);
@@ -136,8 +137,8 @@ export async function skipNextOccurrence(id: string): Promise<string> {
  * Delete a template but keep the expenses it already produced
  * (the link is nulled explicitly so we never depend on FK emulation).
  */
-export async function deleteRecurring(id: string) {
-  const existing = await prisma.recurringExpense.findUnique({ where: { id } });
+export async function deleteRecurring(userId: string, id: string) {
+  const existing = await prisma.recurringExpense.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Recurring expense not found");
   await prisma.$transaction([
     prisma.expense.updateMany({ where: { recurringId: id }, data: { recurringId: null } }),
@@ -165,10 +166,10 @@ export type MaterializeResult = { templates: number; created: number };
  * hitting the same occurrence loses the race gracefully (P2002 → skip), and
  * `nextDate` only ever moves forward.
  */
-export async function runDueRecurring(): Promise<MaterializeResult> {
+export async function runDueRecurring(userId: string): Promise<MaterializeResult> {
   const today = parseUTCMidnight(todayISODate())!;
   const due = await prisma.recurringExpense.findMany({
-    where: { isActive: true, nextDate: { lte: today } },
+    where: { userId, isActive: true, nextDate: { lte: today } },
     orderBy: { nextDate: "asc" },
   });
 
@@ -194,6 +195,7 @@ export async function runDueRecurring(): Promise<MaterializeResult> {
       try {
         await prisma.expense.create({
           data: {
+            userId: t.userId,
             amountPaise: t.amountPaise,
             date,
             categoryId: t.categoryId, // validated when the template was created

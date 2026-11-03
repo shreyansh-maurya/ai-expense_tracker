@@ -13,9 +13,37 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions          Session[]
+  categories        Category[]
+  expenses          Expense[]
+  budgets           Budget[]
+  recurringExpenses RecurringExpense[]
+  wishlistItems     WishlistItem[]
+}
+
+model Session {
+  id        String   @id // random token, stored in an http-only cookie
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model Category {
   id         String    @id @default(cuid())
-  name       String    @unique
+  userId     String
+  name       String
   color      String // hex, e.g. "#f97316"
   icon       String? // lucide icon name (for future use)
   keywords   String? // comma-separated, powers deterministic categorization
@@ -24,13 +52,19 @@ model Category {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   expenses          Expense[]
   budgets           Budget[]
   recurringExpenses RecurringExpense[]
+
+  @@unique([userId, name])
+  @@index([userId])
 }
 
 model Expense {
   id            String   @id @default(cuid())
+  userId        String
   amountPaise   Int // integer paise, never floats
   date          DateTime // UTC midnight of the calendar date
   categoryId    String
@@ -43,9 +77,11 @@ model Expense {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   category         Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   recurringExpense RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
 
+  @@index([userId, date])
   @@index([date])
   @@index([merchantNorm])
   @@index([categoryId, date])
@@ -54,6 +90,7 @@ model Expense {
 
 model RecurringExpense {
   id            String    @id @default(cuid())
+  userId        String
   amountPaise   Int // integer paise, never floats
   categoryId    String
   paymentMethod String // CASH | CARD | UPI | NET_BANKING | WALLET | OTHER
@@ -68,28 +105,33 @@ model RecurringExpense {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   expenses Expense[] // occurrences materialized so far
 
+  @@index([userId, isActive, nextDate])
   @@index([isActive, nextDate])
 }
 
 model Budget {
   id         String   @id @default(cuid())
+  userId     String
   categoryId String? // null = overall monthly budget
   month      String // "YYYY-MM"
   limitPaise Int // integer paise
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  @@unique([categoryId, month])
-  @@index([month])
+  @@unique([userId, categoryId, month])
+  @@index([userId, month])
 }
 
 model WishlistItem {
   id         String   @id @default(cuid())
+  userId     String
   title      String
   url        String? // product page on the store (optional — offline/to-store items allowed)
   store      String // AMAZON | FLIPKART | MYNTRA | ... | OTHER (validated union in app layer)
@@ -102,9 +144,11 @@ model WishlistItem {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  quotes WishlistPriceQuote[]
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quotes    WishlistPriceQuote[]
+  snapshots WishlistPriceSnapshot[]
 
-  @@index([status])
+  @@index([userId, status])
 }
 
 model WishlistPriceQuote {
@@ -121,4 +165,17 @@ model WishlistPriceQuote {
   // one tracked (current) price per store per item — re-checking a store updates it
   @@unique([wishlistItemId, store])
   @@index([wishlistItemId])
+}
+
+model WishlistPriceSnapshot {
+  id             String   @id @default(cuid())
+  wishlistItemId String
+  store          String // AMAZON | FLIPKART | ... | OTHER (validated union in app layer)
+  pricePaise     Int // integer paise, never floats
+  recordedAt     DateTime @default(now())
+
+  item WishlistItem @relation(fields: [wishlistItemId], references: [id], onDelete: Cascade)
+
+  // append-only history: one row per observed price change, so trends survive re-checks
+  @@index([wishlistItemId, store, recordedAt])
 }

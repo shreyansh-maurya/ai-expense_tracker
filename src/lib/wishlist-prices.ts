@@ -6,6 +6,9 @@
  * comparison works the first-party way: the user records the price they saw at
  * each store as a "quote", and these helpers turn an item's quotes into a
  * Flash-style best-price comparison.
+ *
+ * Quotes are the current price per store; PricePoints are the append-only
+ * history of observed prices, which is what trends and all-time lows need.
  */
 import { WISHLIST_STORES, type WishlistStore } from "@/lib/wishlist-stores";
 
@@ -71,4 +74,80 @@ export function summarizeQuotes(quotes: PriceQuoteLike[]): QuotesSummary | null 
     highest && highest.pricePaise > 0 ? Math.round((savingsPaise / highest.pricePaise) * 100) : 0;
 
   return { count: sorted.length, best, highest, savingsPaise, savingsPct };
+}
+
+/** One historical price reading of an item at a store (append-only). */
+export type PricePoint = {
+  store: string;
+  pricePaise: number;
+  recordedAt: Date;
+};
+
+export type PriceTrend = {
+  store: string;
+  samples: number;
+  firstPaise: number;
+  lastPaise: number;
+  /** last - first: negative means the price dropped since tracking started */
+  deltaPaise: number;
+  /** rounded magnitude of the change, as a percentage of the first reading */
+  deltaPct: number;
+  direction: "down" | "up" | "flat";
+  lowestPaise: number;
+  /** the latest reading is the cheapest ever recorded for this store */
+  isAllTimeLow: boolean;
+};
+
+/** Usable readings, oldest first; zero/negative prices are noise and dropped. */
+function chronological(points: PricePoint[]): PricePoint[] {
+  return points
+    .filter((p) => p.pricePaise > 0)
+    .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime() || a.pricePaise - b.pricePaise);
+}
+
+/**
+ * Trend across readings — pass one store's history for a per-store trend, or an
+ * item's whole history for the item's overall movement. Needs at least two
+ * readings: a single price is not a trend.
+ */
+export function summarizeTrend(points: PricePoint[]): PriceTrend | null {
+  const ordered = chronological(points);
+  if (ordered.length < 2) return null;
+
+  const first = ordered[0];
+  const last = ordered[ordered.length - 1];
+  const deltaPaise = last.pricePaise - first.pricePaise;
+  const lowestPaise = Math.min(...ordered.map((p) => p.pricePaise));
+
+  return {
+    store: last.store,
+    samples: ordered.length,
+    firstPaise: first.pricePaise,
+    lastPaise: last.pricePaise,
+    deltaPaise,
+    deltaPct: Math.round((Math.abs(deltaPaise) / first.pricePaise) * 100),
+    direction: deltaPaise < 0 ? "down" : deltaPaise > 0 ? "up" : "flat",
+    lowestPaise,
+    isAllTimeLow: last.pricePaise === lowestPaise,
+  };
+}
+
+export type LowestEver = { store: string; pricePaise: number; recordedAt: Date };
+
+/**
+ * Cheapest price ever recorded for an item, across every store. Ties keep the
+ * earliest sighting so the label is stable. Null when there is no usable history.
+ */
+export function lowestEverPrice(points: PricePoint[]): LowestEver | null {
+  const ordered = chronological(points);
+  if (ordered.length === 0) return null;
+  return ordered.reduce((best, p) => (p.pricePaise < best.pricePaise ? p : best));
+}
+
+/** True when the current best price is also the cheapest ever seen (needs real history). */
+export function isAtAllTimeLow(bestPaise: number, history: PricePoint[]): boolean {
+  const lowest = lowestEverPrice(history);
+  return lowest != null && history.filter((p) => p.pricePaise > 0).length >= 2
+    ? lowest.pricePaise === bestPaise
+    : false;
 }

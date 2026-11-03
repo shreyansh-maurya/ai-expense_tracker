@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import {
+  ChevronDown,
   ExternalLink,
   Gift,
   ImageOff,
   Loader2,
   PackageCheck,
-  Scale,
   Trash2,
+  TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -25,8 +26,13 @@ import { formatINR } from "@/lib/money";
 import { todayISODate } from "@/lib/dates";
 import type { WishlistRow } from "@/lib/services/wishlist";
 import type { PriceQuoteRow } from "@/lib/services/wishlist-prices";
-import { summarizeQuotes } from "@/lib/wishlist-prices";
-import { PriceCompareDialog } from "@/components/wishlist/price-compare-dialog";
+import {
+  isAtAllTimeLow,
+  lowestEverPrice,
+  summarizeQuotes,
+  type PricePoint,
+} from "@/lib/wishlist-prices";
+import { PriceComparePanel } from "@/components/wishlist/price-compare-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,15 +56,46 @@ const STATUS_LABELS: Record<string, string> = {
   DROPPED: "Dropped",
 };
 
-/** One-line Flash-style hint: cheapest tracked store for this item. */
-function BestPriceHint({ quotes }: { quotes: PriceQuoteRow[] }) {
+/**
+ * One-line Flash-style hint: cheapest tracked store for this item, plus whether
+ * that price is the lowest ever seen (or what the lowest used to be).
+ */
+function BestPriceHint({
+  quotes,
+  history,
+}: {
+  quotes: PriceQuoteRow[];
+  history: PricePoint[];
+}) {
   const summary = summarizeQuotes(quotes);
   if (!summary) return null;
   const bestLabel =
     WISHLIST_STORE_LABELS[summary.best.store as WishlistStore] ?? summary.best.store;
+
+  if (isAtAllTimeLow(summary.best.pricePaise, history)) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+        <TrendingDown className="size-3.5" />
+        Lowest yet: {formatINR(summary.best.pricePaise, { decimals: false })} at {bestLabel}
+      </span>
+    );
+  }
+
+  const lowest = lowestEverPrice(history);
+  const cheaperBefore =
+    lowest != null && lowest.pricePaise < summary.best.pricePaise ? lowest : null;
+
   return (
     <span className="text-xs text-muted-foreground">
       Best: {formatINR(summary.best.pricePaise, { decimals: false })} at {bestLabel}
+      {cheaperBefore ? (
+        <span
+          className="text-muted-foreground/80"
+          title={`Cheapest seen at ${WISHLIST_STORE_LABELS[cheaperBefore.store as WishlistStore] ?? cheaperBefore.store}`}
+        >
+          {" · "}low {formatINR(cheaperBefore.pricePaise, { decimals: false })}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -76,13 +113,16 @@ export function WishlistItemCard({
   item,
   categories,
   quotes = [],
+  history = [],
 }: {
   item: WishlistRow;
   categories: { id: string; name: string; color: string }[];
   quotes?: PriceQuoteRow[];
+  history?: PricePoint[];
 }) {
   const [pending, setPending] = React.useState(false);
   const [boughtOpen, setBoughtOpen] = React.useState(false);
+  const [priceOpen, setPriceOpen] = React.useState(false);
 
   async function transition(status: string) {
     setPending(true);
@@ -170,19 +210,27 @@ export function WishlistItemCard({
           </div>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <BestPriceHint quotes={quotes} />
-          <PriceCompareDialog
-            itemId={item.id}
-            itemTitle={item.title}
-            quotes={quotes}
-            trigger={
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground">
-                <Scale />
-                Compare
-              </Button>
-            }
-          />
+          <BestPriceHint quotes={quotes} history={history} />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            aria-expanded={priceOpen}
+            aria-controls={`prices-${item.id}`}
+            onClick={() => setPriceOpen((open) => !open)}
+          >
+            {quotes.length > 0
+              ? `${quotes.length} ${quotes.length === 1 ? "store" : "stores"}`
+              : "Prices"}
+            <ChevronDown
+              className={`size-4 transition-transform ${priceOpen ? "rotate-180" : ""}`}
+            />
+          </Button>
         </div>
+        {priceOpen ? (
+          <PriceComparePanel itemId={item.id} quotes={quotes} history={history} />
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t pt-2">

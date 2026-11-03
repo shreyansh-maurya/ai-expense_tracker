@@ -13,35 +13,35 @@ import { getMonthBudgetData } from "./budgets";
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
-export async function getDashboardData(month: string) {
+export async function getDashboardData(userId: string, month: string) {
   const { start, end } = monthRange(month);
   const prev = monthRange(addMonthKeys(month, -1));
   const trendStart = monthRange(lastNMonthKeys(12, month)[0]).start;
 
   const [totalAgg, prevAgg, groups, recent, budgetData, trendRows] = await Promise.all([
     prisma.expense.aggregate({
-      where: { date: { gte: start, lt: end } },
+      where: { userId, date: { gte: start, lt: end } },
       _sum: { amountPaise: true },
     }),
     prisma.expense.aggregate({
-      where: { date: { gte: prev.start, lt: prev.end } },
+      where: { userId, date: { gte: prev.start, lt: prev.end } },
       _sum: { amountPaise: true },
     }),
     prisma.expense.groupBy({
       by: ["categoryId"],
-      where: { date: { gte: start, lt: end } },
+      where: { userId, date: { gte: start, lt: end } },
       _sum: { amountPaise: true },
       orderBy: { _sum: { amountPaise: "desc" } },
     }),
     prisma.expense.findMany({
-      where: { date: { gte: start, lt: end } },
+      where: { userId, date: { gte: start, lt: end } },
       include: { category: true },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 5,
     }),
-    getMonthBudgetData(month),
+    getMonthBudgetData(userId, month),
     prisma.expense.findMany({
-      where: { date: { gte: trendStart, lt: end } },
+      where: { userId, date: { gte: trendStart, lt: end } },
       select: { date: true, amountPaise: true },
     }),
   ]);
@@ -53,6 +53,7 @@ export async function getDashboardData(month: string) {
   // month), so the donut shows the same categories — and the same colours — in the
   // same order for every month; only the arc sizes change.
   const cats = await prisma.category.findMany({
+    where: { userId },
     select: { id: true, name: true, color: true, isArchived: true },
     orderBy: { name: "asc" },
   });

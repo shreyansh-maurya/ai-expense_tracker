@@ -1,10 +1,15 @@
 import type { ReactNode } from "react";
 import { IndianRupee } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { SignOutButton } from "@/components/layout/sign-out-button";
+import { SignOutIcon } from "@/components/layout/sign-out-icon";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
-export default function AppLayout({ children }: { children: ReactNode }) {
+export default async function AppLayout({ children }: { children: ReactNode }) {
+  // Every page under (app) requires a session; the user id also scopes all data.
+  const user = await requireUser();
   return (
     <div className="min-h-dvh">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r bg-card md:flex">
@@ -20,9 +25,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="flex-1 overflow-y-auto p-4">
           <SidebarNav />
         </div>
-        <div className="flex items-center justify-between border-t p-4">
-          <p className="text-xs text-muted-foreground">v0.1 · Phase A</p>
-          <ThemeToggle />
+        <div className="space-y-3 border-t p-4">
+          <SignOutButton email={user.email} />
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">v0.1 · Phase A</p>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
@@ -34,7 +42,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
             <span className="text-sm font-semibold">AI Expense Tracker</span>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <SignOutIcon />
+            <ThemeToggle />
+          </div>
         </header>
         <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:px-8 md:pb-12">
           {children}

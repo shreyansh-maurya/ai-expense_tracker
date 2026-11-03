@@ -1,4 +1,5 @@
 import { listCategories } from "@/lib/services/categories";
+import { requireUser } from "@/lib/auth";
 import { CategoryManager } from "@/components/categories/category-manager";
 
 export const dynamic = "force-dynamic";
@@ -6,7 +7,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Categories" };
 
 export default async function CategoriesPage() {
-  const categories = await listCategories();
+  const user = await requireUser();
+  const categories = await listCategories(user.id);
 
   return (
     <div className="space-y-6">

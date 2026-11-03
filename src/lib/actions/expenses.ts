@@ -5,6 +5,7 @@ import { parseAmountToPaise } from "@/lib/money";
 import { expenseInputSchema } from "@/lib/validators/expense";
 import { createExpense, deleteExpense, updateExpense } from "@/lib/services/expenses";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { suggestCategoriesBatch } from "@/lib/services/ai-categorize";
 import { ActionResult, toErrorMessage, zodFirstError } from "./helpers";
 
@@ -15,6 +16,7 @@ function revalidateAll() {
 }
 
 export async function saveExpenseAction(input: unknown, id?: string): Promise<ActionResult> {
+  const user = await requireUser();
   const parsed = expenseInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: zodFirstError(parsed.error) };
   const d = parsed.data;
@@ -27,8 +29,8 @@ export async function saveExpenseAction(input: unknown, id?: string): Promise<Ac
       merchant: d.merchant || undefined,
       notes: d.notes || undefined,
     };
-    if (id) await updateExpense(id, data);
-    else await createExpense(data);
+    if (id) await updateExpense(user.id, id, data);
+    else await createExpense(user.id, data);
   } catch (e) {
     return { ok: false, error: toErrorMessage(e) };
   }
@@ -50,7 +52,9 @@ export async function suggestCategoryAction(
   notes: string
 ): Promise<SuggestCategoryResponse> {
   try {
+    const user = await requireUser();
     const categories = await prisma.category.findMany({
+      where: { userId: user.id },
       select: { id: true, name: true, keywords: true, isArchived: true },
     });
     const [s] = await suggestCategoriesBatch(
@@ -65,8 +69,9 @@ export async function suggestCategoryAction(
 }
 
 export async function deleteExpenseAction(id: string): Promise<ActionResult> {
+  const user = await requireUser();
   try {
-    await deleteExpense(id);
+    await deleteExpense(user.id, id);
   } catch (e) {
     return { ok: false, error: toErrorMessage(e) };
   }

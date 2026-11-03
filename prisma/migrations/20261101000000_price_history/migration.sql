@@ -1,0 +1,16 @@
+-- WishlistPriceSnapshot: append-only price history. WishlistPriceQuote keeps the
+-- current price per (item, store); this table keeps each observed change so the
+-- compare dialog can show a trend and the cheapest price ever seen.
+
+-- CreateTable
+CREATE TABLE "WishlistPriceSnapshot" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "wishlistItemId" TEXT NOT NULL,
+    "store" TEXT NOT NULL,
+    "pricePaise" INTEGER NOT NULL,
+    "recordedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "WishlistPriceSnapshot_wishlistItemId_fkey" FOREIGN KEY ("wishlistItemId") REFERENCES "WishlistItem" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateIndex
+CREATE INDEX "WishlistPriceSnapshot_wishlistItemId_store_recordedAt_idx" ON "WishlistPriceSnapshot"("wishlistItemId", "store", "recordedAt");

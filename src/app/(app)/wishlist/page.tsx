@@ -1,12 +1,14 @@
 import { Gift, ShoppingBag } from "lucide-react";
 import { formatINR } from "@/lib/money";
 import { listWishlist } from "@/lib/services/wishlist";
-import { listAllPriceQuotes } from "@/lib/services/wishlist-prices";
+import { listAllPriceHistory, listAllPriceQuotes } from "@/lib/services/wishlist-prices";
+import { requireUser } from "@/lib/auth";
 import { listActiveCategories } from "@/lib/services/categories";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WishlistAddTrigger } from "@/components/wishlist/wishlist-form-dialog";
 import { WishlistItemCard } from "@/components/wishlist/wishlist-item-card";
+import { ComparePricesButton } from "@/components/wishlist/compare-prices-button";
 import { CardTitle, CardHeader, Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -48,12 +50,18 @@ function groupOf(rows: Awaited<ReturnType<typeof listWishlist>>) {
 }
 
 export default async function WishlistPage() {
-  const [rows, categories, quotesByItem] = await Promise.all([
-    listWishlist(),
-    listActiveCategories(),
-    listAllPriceQuotes(),
+  const user = await requireUser();
+  const [rows, categories, quotesByItem, historyByItem] = await Promise.all([
+    listWishlist(user.id),
+    listActiveCategories(user.id),
+    listAllPriceQuotes(user.id),
+    listAllPriceHistory(user.id),
   ]);
   const { groups, wanted, ordered, bought } = groupOf(rows);
+  // items whose product link can be checked live (already bought/dropped ones are skipped)
+  const fetchableCount = rows.filter(
+    (r) => r.url && (r.status === "WANTED" || r.status === "ORDERED")
+  ).length;
 
   const wishlistValuePaise = wanted
     .concat(ordered)
@@ -70,7 +78,10 @@ export default async function WishlistPage() {
             prices across stores before the money leaves your account
           </p>
         </div>
-        <WishlistAddTrigger />
+        <div className="flex flex-wrap items-center gap-2">
+          <ComparePricesButton itemCount={fetchableCount} />
+          <WishlistAddTrigger />
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -141,6 +152,7 @@ export default async function WishlistPage() {
                         item={r}
                         categories={categories}
                         quotes={quotesByItem[r.id] ?? []}
+                        history={historyByItem[r.id] ?? []}
                       />
                     ))}
                   </div>

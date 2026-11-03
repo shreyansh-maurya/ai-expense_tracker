@@ -17,14 +17,14 @@ export type MonthBudgetData = {
 };
 
 /** Budgets + actual spending for a month, including unbudgeted categories. */
-export async function getMonthBudgetData(month: string): Promise<MonthBudgetData> {
+export async function getMonthBudgetData(userId: string, month: string): Promise<MonthBudgetData> {
   const { start, end } = monthRange(month);
   const [budgets, categories, spentGroups] = await Promise.all([
-    prisma.budget.findMany({ where: { month } }),
-    prisma.category.findMany({ where: { isArchived: false }, orderBy: { name: "asc" } }),
+    prisma.budget.findMany({ where: { userId, month } }),
+    prisma.category.findMany({ where: { userId, isArchived: false }, orderBy: { name: "asc" } }),
     prisma.expense.groupBy({
       by: ["categoryId"],
-      where: { date: { gte: start, lt: end } },
+      where: { userId, date: { gte: start, lt: end } },
       _sum: { amountPaise: true },
     }),
   ]);
@@ -61,27 +61,29 @@ export async function getMonthBudgetData(month: string): Promise<MonthBudgetData
 }
 
 export async function upsertBudget({
+  userId,
   categoryId,
   month,
   limitPaise,
 }: {
+  userId: string;
   categoryId: string | null;
   month: string;
   limitPaise: number;
 }) {
   if (categoryId) {
-    const c = await prisma.category.findUnique({ where: { id: categoryId } });
+    const c = await prisma.category.findFirst({ where: { id: categoryId, userId } });
     if (!c || c.isArchived) throw new ServiceError("Category not found");
   }
-  const existing = await prisma.budget.findFirst({ where: { categoryId, month } });
+  const existing = await prisma.budget.findFirst({ where: { userId, categoryId, month } });
   if (existing) {
     return prisma.budget.update({ where: { id: existing.id }, data: { limitPaise } });
   }
-  return prisma.budget.create({ data: { categoryId, month, limitPaise } });
+  return prisma.budget.create({ data: { userId, categoryId, month, limitPaise } });
 }
 
-export async function deleteBudget(id: string) {
-  const existing = await prisma.budget.findUnique({ where: { id } });
+export async function deleteBudget(userId: string, id: string) {
+  const existing = await prisma.budget.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Budget not found");
   await prisma.budget.delete({ where: { id } });
 }

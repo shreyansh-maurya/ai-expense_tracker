@@ -3,6 +3,7 @@ import { dateToISODate, formatDayLabel, parseUTCMidnight, todayISODate } from "@
 import { formatINR } from "@/lib/money";
 import { describeSchedule, type RecurringFrequency } from "@/lib/recurring-schedule";
 import { runDueRecurring, listRecurring } from "@/lib/services/recurring";
+import { requireUser } from "@/lib/auth";
 import { listActiveCategories } from "@/lib/services/categories";
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "@/lib/validators/expense";
 import { Badge } from "@/components/ui/badge";
@@ -26,8 +27,12 @@ export const metadata = { title: "Recurring" };
 export default async function RecurringPage() {
   // Bring templates up to date before listing — due occurrences become real
   // expenses on the same render (this is what replaces a cron job).
-  await runDueRecurring();
-  const [rows, categories] = await Promise.all([listRecurring(), listActiveCategories()]);
+  const user = await requireUser();
+  await runDueRecurring(user.id);
+  const [rows, categories] = await Promise.all([
+    listRecurring(user.id),
+    listActiveCategories(user.id),
+  ]);
 
   const today = parseUTCMidnight(todayISODate())!;
 

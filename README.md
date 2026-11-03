@@ -14,6 +14,7 @@ A modern, local-first personal expense tracker built for India — INR-native, b
 - **🏷️ Categories** — full CRUD, colors, archive (delete is guarded when expenses exist), keywords for future auto-categorization
 - **📥 CSV import** — upload bank statements, auto-detect column mapping, preview rows, skip duplicates, optionally create missing categories (day-first DD/MM/YYYY dates supported)
 - **📤 CSV export** — filtered export with Excel-friendly BOM, plus a starter template
+- **🛍️ Wishlist price comparison** — save products from any store, then press **Compare prices** to fetch each product link's live price server-side (JSON-LD / meta / store markup, with one AI pass over the page text as a fallback). Every check is appended to price history, so each store gets a ▼/▲ trend and the all-time low; expand the arrow on a card to see every store's price inline
 - **🌗 Dark mode** via `next-themes`
 
 ## Tech stack
@@ -81,4 +82,5 @@ Or from the CLI: `npx vercel` (login) → `npx vercel env add DATABASE_URL` / `D
 
 - **Phase B (shipped):** provider-agnostic AI auto-categorization (`AI_PROVIDER` / `AI_MODEL` / `AI_BASE_URL` / `AI_API_KEY` env vars) with a deterministic keyword-rule fallback — no key required to run the app.
 - **Phase C (shipped):** recurring expenses — schedules computed from the start-date anchor (month-end clamping), materialized on read instead of a cron job, idempotent thanks to a `(recurringId, date)` unique index, with pause / resume / skip and per-engine migrations (SQLite + Postgres).
+- **Price fetching:** product pages are read on demand — the price comes from the store's own buybox data / JSON-LD / price markup, then one AI pass over the page text (needs `AI_API_KEY`). Amazon serves a price-less page to desktop user agents, so Amazon requests use a mobile user agent and read the buybox price data directly. Flipkart renders prices entirely in the browser and returns no price to any server-side request; set `PRICE_FETCH_PROXY_URL` to a scraping gateway URL template containing `{url}` (e.g. `https://api.scraperapi.com?api_key=KEY&render=true&url={url}`) to route those fetches through a gateway that renders JavaScript.
 - **Next:** Auth.js multi-user with per-user data (needs a provider choice: OAuth app or email service), an insights page, and a feedback loop where correcting a suggestion retrains the keyword rules.

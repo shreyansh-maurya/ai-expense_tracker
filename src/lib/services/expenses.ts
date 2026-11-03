@@ -37,15 +37,17 @@ function buildWhere(f: ExpenseFilterInput): Prisma.ExpenseWhereInput {
 }
 
 export async function listExpenses({
+  userId,
   filters,
   page,
   pageSize = PAGE_SIZE,
 }: {
+  userId: string;
   filters: ExpenseFilterInput;
   page: number;
   pageSize?: number;
 }) {
-  const where = buildWhere(filters);
+  const where: Prisma.ExpenseWhereInput = { ...buildWhere(filters), userId };
   const [rows, total] = await Promise.all([
     prisma.expense.findMany({
       where,
@@ -65,8 +67,9 @@ export async function listExpenses({
   };
 }
 
-export async function getExpense(id: string) {
-  return prisma.expense.findUnique({ where: { id }, include: { category: true } });
+/** Scoped read: another account's id is indistinguishable from a missing one. */
+export async function getExpense(userId: string, id: string) {
+  return prisma.expense.findFirst({ where: { id, userId }, include: { category: true } });
 }
 
 export type ExpenseWriteInput = {
@@ -78,7 +81,12 @@ export type ExpenseWriteInput = {
   notes?: string;
 };
 
-function toData(input: ExpenseWriteInput): Prisma.ExpenseCreateInput {
+type ExpenseFields = Omit<
+  Prisma.ExpenseUncheckedCreateInput,
+  "userId" | "id" | "createdAt" | "updatedAt"
+>;
+
+function toData(input: ExpenseWriteInput): ExpenseFields {
   const date = parseUTCMidnight(input.dateISO);
   if (!date) throw new ServiceError("Invalid date");
   const merchant = input.merchant?.trim() || null;
@@ -90,26 +98,29 @@ function toData(input: ExpenseWriteInput): Prisma.ExpenseCreateInput {
     merchantNorm: merchant ? merchant.toLowerCase() : null,
     notes: input.notes?.trim() || null,
     categorizedBy: "USER",
-    category: { connect: { id: input.categoryId } },
+    categoryId: input.categoryId,
   };
 }
 
-export async function assertCategoryUsable(categoryId: string) {
-  const category = await prisma.category.findUnique({ where: { id: categoryId } });
+export async function assertCategoryUsable(userId: string, categoryId: string) {
+  const category = await prisma.category.findFirst({ where: { id: categoryId, userId } });
   if (!category) throw new ServiceError("Category not found");
   if (category.isArchived) throw new ServiceError("That category is archived — pick another");
   return category;
 }
 
-export async function createExpense(input: ExpenseWriteInput) {
-  await assertCategoryUsable(input.categoryId);
-  return prisma.expense.create({ data: toData(input), include: { category: true } });
+export async function createExpense(userId: string, input: ExpenseWriteInput) {
+  await assertCategoryUsable(userId, input.categoryId);
+  return prisma.expense.create({
+    data: { ...toData(input), userId },
+    include: { category: true },
+  });
 }
 
-export async function updateExpense(id: string, input: ExpenseWriteInput) {
-  const existing = await prisma.expense.findUnique({ where: { id } });
+export async function updateExpense(userId: string, id: string, input: ExpenseWriteInput) {
+  const existing = await prisma.expense.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Expense not found");
-  await assertCategoryUsable(input.categoryId);
+  await assertCategoryUsable(userId, input.categoryId);
   try {
     return await prisma.expense.update({
       where: { id },
@@ -126,8 +137,8 @@ export async function updateExpense(id: string, input: ExpenseWriteInput) {
   }
 }
 
-export async function deleteExpense(id: string) {
-  const existing = await prisma.expense.findUnique({ where: { id } });
+export async function deleteExpense(userId: string, id: string) {
+  const existing = await prisma.expense.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Expense not found");
   await prisma.expense.delete({ where: { id } });
 }

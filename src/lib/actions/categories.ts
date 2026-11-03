@@ -8,6 +8,7 @@ import {
   setCategoryArchived,
   updateCategory,
 } from "@/lib/services/categories";
+import { requireUser } from "@/lib/auth";
 import { ActionResult, toErrorMessage, zodFirstError } from "./helpers";
 
 function revalidateAll() {
@@ -18,11 +19,12 @@ function revalidateAll() {
 }
 
 export async function saveCategoryAction(input: unknown, id?: string): Promise<ActionResult> {
+  const user = await requireUser();
   const parsed = categoryInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: zodFirstError(parsed.error) };
   try {
-    if (id) await updateCategory(id, parsed.data);
-    else await createCategory(parsed.data);
+    if (id) await updateCategory(user.id, id, parsed.data);
+    else await createCategory(user.id, parsed.data);
   } catch (e) {
     return { ok: false, error: toErrorMessage(e) };
   }
@@ -34,8 +36,9 @@ export async function setCategoryArchivedAction(
   id: string,
   archived: boolean
 ): Promise<ActionResult> {
+  const user = await requireUser();
   try {
-    await setCategoryArchived(id, archived);
+    await setCategoryArchived(user.id, id, archived);
   } catch (e) {
     return { ok: false, error: toErrorMessage(e) };
   }
@@ -44,8 +47,9 @@ export async function setCategoryArchivedAction(
 }
 
 export async function deleteCategoryAction(id: string): Promise<ActionResult> {
+  const user = await requireUser();
   try {
-    await deleteCategory(id);
+    await deleteCategory(user.id, id);
   } catch (e) {
     return { ok: false, error: toErrorMessage(e) };
   }

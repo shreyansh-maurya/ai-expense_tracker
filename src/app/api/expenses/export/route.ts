@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { buildExpensesCsv, buildTemplateCsv, exportFilename, getExpensesForExport } from "@/lib/services/csv";
 import { parseUTCMidnight } from "@/lib/dates";
+import { getApiUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+
   const url = new URL(request.url);
 
   if (url.searchParams.get("template")) {
@@ -26,7 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid to date (use YYYY-MM-DD)" }, { status: 400 });
   }
 
-  const rows = await getExpensesForExport({
+  const rows = await getExpensesForExport(user.id, {
     from: from ? from.toISOString().slice(0, 10) : undefined,
     to: to ? to.toISOString().slice(0, 10) : undefined,
   });

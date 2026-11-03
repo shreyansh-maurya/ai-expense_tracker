@@ -27,8 +27,8 @@ export type WishlistRow = {
 const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 const STATUS_ORDER: Record<string, number> = { WANTED: 0, ORDERED: 1, BOUGHT: 2, DROPPED: 3 };
 
-export async function listWishlist(): Promise<WishlistRow[]> {
-  const rows = await prisma.wishlistItem.findMany();
+export async function listWishlist(userId: string): Promise<WishlistRow[]> {
+  const rows = await prisma.wishlistItem.findMany({ where: { userId } });
   return rows.sort((a, b) => {
     const s = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
     if (s !== 0) return s;
@@ -54,11 +54,11 @@ function resolveStore(url: string | undefined, store: WishlistStore | undefined)
   return detectStoreFromUrl(url) ?? "OTHER";
 }
 
-export async function createWishlistItem(input: WishlistWriteInput) {
+export async function createWishlistItem(userId: string, input: WishlistWriteInput) {
   const url = input.url?.trim() || undefined;
   if (url) {
     // Same product pasted twice is almost always an accident — catch it early.
-    const dupe = await prisma.wishlistItem.findFirst({ where: { url } });
+    const dupe = await prisma.wishlistItem.findFirst({ where: { userId, url } });
     if (dupe) {
       throw new ServiceError(
         `This link is already on your wishlist ("${dupe.title}") — open it from there instead.`
@@ -67,6 +67,7 @@ export async function createWishlistItem(input: WishlistWriteInput) {
   }
   return prisma.wishlistItem.create({
     data: {
+      userId,
       title: input.title,
       url: url ?? null,
       store: resolveStore(url, input.store),
@@ -78,13 +79,15 @@ export async function createWishlistItem(input: WishlistWriteInput) {
   });
 }
 
-export async function updateWishlistItem(id: string, input: WishlistWriteInput) {
-  const existing = await prisma.wishlistItem.findUnique({ where: { id } });
+export async function updateWishlistItem(userId: string, id: string, input: WishlistWriteInput) {
+  const existing = await prisma.wishlistItem.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Wishlist item not found");
 
   const url = input.url?.trim() || undefined;
   if (url !== existing.url && url) {
-    const dupe = await prisma.wishlistItem.findFirst({ where: { url, id: { not: id } } });
+    const dupe = await prisma.wishlistItem.findFirst({
+      where: { userId, url, id: { not: id } },
+    });
     if (dupe) {
       throw new ServiceError(`Another wishlist item already uses this link ("${dupe.title}")`);
     }
@@ -104,8 +107,8 @@ export async function updateWishlistItem(id: string, input: WishlistWriteInput) 
   });
 }
 
-export async function setWishlistStatus(id: string, status: WishlistStatus) {
-  const existing = await prisma.wishlistItem.findUnique({ where: { id } });
+export async function setWishlistStatus(userId: string, id: string, status: WishlistStatus) {
+  const existing = await prisma.wishlistItem.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Wishlist item not found");
   return prisma.wishlistItem.update({ where: { id }, data: { status } });
 }
@@ -123,8 +126,8 @@ export type BoughtInput = {
  * "Mark bought" done properly: creates a real expense (same validation path
  * as the expenses page) and links it back to the wishlist item.
  */
-export async function logWishlistBought(id: string, input: BoughtInput) {
-  const item = await prisma.wishlistItem.findUnique({ where: { id } });
+export async function logWishlistBought(userId: string, id: string, input: BoughtInput) {
+  const item = await prisma.wishlistItem.findFirst({ where: { id, userId } });
   if (!item) throw new ServiceError("Wishlist item not found");
   if (item.expenseId) {
     throw new ServiceError("This item was already logged as an expense");
@@ -132,7 +135,7 @@ export async function logWishlistBought(id: string, input: BoughtInput) {
   const date = parseUTCMidnight(input.dateISO);
   if (!date) throw new ServiceError("Invalid date");
 
-  const expense = await createExpense({
+  const expense = await createExpense(userId, {
     amountPaise: input.amountPaise,
     dateISO: input.dateISO,
     categoryId: input.categoryId,
@@ -148,8 +151,8 @@ export async function logWishlistBought(id: string, input: BoughtInput) {
   return expense;
 }
 
-export async function deleteWishlistItem(id: string) {
-  const existing = await prisma.wishlistItem.findUnique({ where: { id } });
+export async function deleteWishlistItem(userId: string, id: string) {
+  const existing = await prisma.wishlistItem.findFirst({ where: { id, userId } });
   if (!existing) throw new ServiceError("Wishlist item not found");
   // the linked expense is intentional spend history — it stays
   await prisma.wishlistItem.delete({ where: { id } });
